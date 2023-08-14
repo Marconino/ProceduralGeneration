@@ -1,0 +1,40 @@
+#pragma kernel CSMain
+
+#include "FastNoiseLite.hlsl"
+
+int _BlocksPerChunk;
+int _Octaves;
+int _Seed;
+float _Amplitude;
+float _Frequency;
+float _Lacunarity;
+float _GroundOffset;
+float _OffsetX;
+float _OffsetY;
+float _OffsetZ;
+RWStructuredBuffer<float> _DensityValues;
+
+int GetIndexFromPos(int x, int y, int z);
+
+[numthreads(8,8,8)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+
+    fnl_state noise = fnlCreateState(_Seed);
+    noise.noise_type = FNL_NOISE_OPENSIMPLEX2;
+    noise.fractal_type = FNL_FRACTAL_FBM;
+    noise.frequency = _Frequency;
+    noise.octaves = _Octaves;
+    noise.lacunarity = _Lacunarity;
+    float3 pos = id;
+    float ground = -pos.y + (_GroundOffset * _BlocksPerChunk);
+    float n = ground + fnlGetNoise3D(noise, pos.x + _OffsetX, pos.y + _OffsetY, pos.z + _OffsetZ) * _Amplitude;
+    int currIndex = GetIndexFromPos(id.x, id.y, id.z);
+    _DensityValues[currIndex] = n;
+
+}
+
+int GetIndexFromPos(int x, int y, int z)
+{
+    return x + _BlocksPerChunk * (y + _BlocksPerChunk * z);
+}
