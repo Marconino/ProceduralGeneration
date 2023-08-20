@@ -25,62 +25,15 @@ public class Chunk
 
     public void CreateChunk(int _nbPointsPerChunk, int _x, int _y, int _z)
     {
-        go.transform.position = new Vector3(_x * _nbPointsPerChunk, _y * _nbPointsPerChunk, _z * _nbPointsPerChunk);
+        int x = (_x * _nbPointsPerChunk) - _x;
+        int y = (_y * _nbPointsPerChunk) - _y;
+        int z = (_z * _nbPointsPerChunk) - _z;
 
-        List<int> triangles = new List<int>();
-        List<Vector3> vertices = new List<Vector3>();
-        List<Vector3> currVertices = new List<Vector3>();
-        int lastMaxVertex = 0;
+        go.transform.position = new Vector3(x, y, z);
 
-        Noise.Instance.CreateBuffers(_nbPointsPerChunk);
-        float[] densityValues = Noise.Instance.Compute(_x, _y, _z);
-        Noise.Instance.ReleaseBuffers();
-
-        float[] currDensityValues = new float[8];
-        for (int z = 0; z < _nbPointsPerChunk; z++)
-        {
-            for (int y = 0; y < _nbPointsPerChunk; y++)
-            {
-                for (int x = 0; x < _nbPointsPerChunk; x++)
-                {
-                    if (x + 1 >= _nbPointsPerChunk || y + 1 >= _nbPointsPerChunk || z + 1 >= _nbPointsPerChunk)
-                        break;
-
-                    Vector3Int pos = new Vector3Int(x, y, z);
-                    int flagIndex = 0;
-                    for (int i = 0; i < 8; i++)
-                    {
-                        Vector3Int nextPos = pos + MarchingCubes.GetVerticesOffset(i);
-                        currDensityValues[i] = densityValues[MarchingCubes.IndexFromPos(nextPos.x, nextPos.y, nextPos.z, _nbPointsPerChunk)];
-
-                        if (currDensityValues[i] < 0)
-                            flagIndex |= 1 << i;
-                    }
-
-                    int[] currTriangles;
-                    MarchingCubes.CreateTrianglesAndVertices(flagIndex, pos, currDensityValues, ref currVertices, out currTriangles);
-                    for (int i = 0; i < currVertices.Count; i++)
-                    {
-                        if (vertices.Contains(currVertices[i]))
-                        {
-                            currTriangles[i] = vertices.IndexOf(currVertices[i]);
-                        }
-                        else
-                        {
-                            vertices.Add(currVertices[i]);
-                            currTriangles[i] = lastMaxVertex++;
-                        }
-                    }
-                    triangles.AddRange(currTriangles);
-                    currVertices.Clear();
-                }
-            }
-        }
-
-        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-        mesh.SetVertices(vertices);
-        mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
+        MarchingCubes.Instance.CreateBuffers(_nbPointsPerChunk);
+        MarchingCubes.Instance.Compute(ref mesh, x, y, z);
+        MarchingCubes.Instance.ReleaseBuffers();
     }
 
     public void SetParent(Transform _parent)
