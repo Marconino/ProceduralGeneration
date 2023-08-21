@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class Chunk
@@ -9,6 +7,7 @@ public class Chunk
     MeshFilter filter;
     MeshRenderer renderer;
     MeshCollider collider;
+    Vector3 pos;
 
     public Chunk(string _name, Material _mat)
     {
@@ -16,11 +15,13 @@ public class Chunk
         mesh = new Mesh();
         filter = go.AddComponent<MeshFilter>();
         renderer = go.AddComponent<MeshRenderer>();
-        collider = go.AddComponent<MeshCollider>();
+        //collider = go.AddComponent<MeshCollider>();
 
         filter.mesh = mesh;
         renderer.material = _mat;
-        collider.sharedMesh = mesh;
+        //collider.sharedMesh = mesh;
+
+        go.SetActive(false);
     }
 
     public void CreateChunk(int _nbPointsPerChunk, int _x, int _y, int _z)
@@ -29,7 +30,7 @@ public class Chunk
         int y = (_y * _nbPointsPerChunk) - _y;
         int z = (_z * _nbPointsPerChunk) - _z;
 
-        go.transform.position = new Vector3(x, y, z);
+        pos = go.transform.position = new Vector3(x, y, z);
 
         MarchingCubes.Instance.CreateBuffers(_nbPointsPerChunk);
         MarchingCubes.Instance.Compute(ref mesh, x, y, z);
@@ -39,5 +40,10 @@ public class Chunk
     public void SetParent(Transform _parent)
     {
         go.transform.SetParent(_parent);
+    }
+
+    public void SetActive(bool _state)
+    {
+        go.SetActive(_state);
     }
 }
