@@ -1,4 +1,6 @@
 #pragma kernel GenerateMarchingCubes
+#pragma kernel Terraforming
+
 #include "MarchingCubesTable.hlsl"
 
 struct Triangle
@@ -12,6 +14,11 @@ int _BlocksPerChunk;
 float _IsoValue;
 RWStructuredBuffer<float> _DensityValues;
 AppendStructuredBuffer<Triangle> _Triangles;
+
+float3 _HitPos;
+float _RadiusTerraforming;
+float _TerraformStrength;
+float3 _ChunkPos;
 
 int GetIndexFromPos(int x, int y, int z);
 float3 GetVerticesOffset(int i);
@@ -60,9 +67,28 @@ void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
 
         currTriangle.A = (verticesOffsets[firstEdgeVertex0] + pos + verticesOffsets[firstEdgeVertex1] + pos) / 2.0;
         currTriangle.B = (verticesOffsets[secondEdgeVertex0] + pos + verticesOffsets[secondEdgeVertex1] + pos) / 2.0;
-        currTriangle.C = (verticesOffsets[thirdEdgeVertex0] + pos + verticesOffsets[thirdEdgeVertex1] + pos) / 2.0;
+        currTriangle.C = (verticesOffsets[thirdEdgeVertex0] + pos + verticesOffsets[thirdEdgeVertex1] + pos) / 2.0;   
         
+        currTriangle.A -= _BlocksPerChunk / 2;
+        currTriangle.B -= _BlocksPerChunk / 2;
+        currTriangle.C -= _BlocksPerChunk / 2;
+
         _Triangles.Append(currTriangle);
+    }
+}
+
+[numthreads(8,8,8)]
+void Terraforming(uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = id;
+    if (pos.x >= _BlocksPerChunk - 1 || pos.y >= _BlocksPerChunk - 1 || pos.z >= _BlocksPerChunk - 1)
+    {
+        return;
+    }
+    
+    if (distance(_ChunkPos + float3(pos.x - _BlocksPerChunk / 2, pos.y - _BlocksPerChunk / 2, pos.z - _BlocksPerChunk / 2), _HitPos) <= _RadiusTerraforming)
+    {
+        _DensityValues[GetIndexFromPos(pos.x, pos.y, pos.z)] += _TerraformStrength;
     }
 }
 

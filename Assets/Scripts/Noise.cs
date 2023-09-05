@@ -1,11 +1,6 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Net.NetworkInformation;
-using Unity.VisualScripting;
-using UnityEditor.Experimental.GraphView;
 using UnityEngine;
-using UnityEngine.SocialPlatforms;
+
 
 public class Noise : MonoBehaviour
 {
@@ -23,6 +18,7 @@ public class Noise : MonoBehaviour
 
     [SerializeField] ComputeShader noiseShader;
     ComputeBuffer bufferDensityValues;
+    float[] densityValues;
 
     void Awake()
     {
@@ -30,14 +26,20 @@ public class Noise : MonoBehaviour
             instance = this;
     }
 
-    public void CreateBuffers(int _nbPointsPerChunk)
+    public void SetNbPointsPerChunk(int _nbPointsPerChunk)
     {
         nbPointsPerChunk = _nbPointsPerChunk;
-        bufferDensityValues = new ComputeBuffer(nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk, sizeof(float));
     }
 
-    public ComputeBuffer Compute(int _x, int _y, int _z)
+    void InitBuffers()
     {
+        bufferDensityValues = new ComputeBuffer(nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk, sizeof(float));
+        densityValues = new float[nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk];
+    }
+
+    public float[] Compute(int _x, int _y, int _z)
+    {
+        InitBuffers();
         noiseShader.SetBuffer(0, "_DensityValues", bufferDensityValues);
 
         noiseShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
@@ -52,10 +54,13 @@ public class Noise : MonoBehaviour
         noiseShader.SetFloat("_OffsetZ", _z);
 
         noiseShader.Dispatch(0, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
-        return bufferDensityValues;
+        bufferDensityValues.GetData(densityValues);
+
+        ReleaseBuffers();
+        return densityValues;
     }
 
-    public void ReleaseBuffers()
+    void ReleaseBuffers()
     {
         bufferDensityValues.Release();
     }

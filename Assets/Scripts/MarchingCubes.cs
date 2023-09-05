@@ -1,8 +1,4 @@
-using JetBrains.Annotations;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class MarchingCubes : MonoBehaviour
@@ -14,6 +10,8 @@ public class MarchingCubes : MonoBehaviour
     [SerializeField] ComputeShader marchingCubesShader;
     ComputeBuffer bufferTriangles;
     ComputeBuffer bufferTrianglesCount;
+    ComputeBuffer bufferDensityValues;
+
     int nbPointsPerChunk;
 
     struct Triangle
@@ -22,7 +20,7 @@ public class MarchingCubes : MonoBehaviour
         Vector3 B;
         Vector3 C;
 
-        public Vector3 this [int i]
+        public Vector3 this[int i]
         {
             get => i == 0 ? A : i == 1 ? B : C;
         }
@@ -34,33 +32,63 @@ public class MarchingCubes : MonoBehaviour
             instance = this;
     }
 
-    public void CreateBuffers(int _nbPointsPerChunk)
+    public void SetNbPointsPerChunk(int _nbPointsPerChunk)
     {
         nbPointsPerChunk = _nbPointsPerChunk;
+    }
 
+    void InitBuffers()
+    {
         //Count : 5 triangles max per Cube * All cubes per Chunk
         //Size : triangles = 3 vertices, so 3 floats per vertex 
-        int allPointsPerChunk = _nbPointsPerChunk * _nbPointsPerChunk * _nbPointsPerChunk;
+        int allPointsPerChunk = nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk;
         bufferTriangles = new ComputeBuffer(5 * allPointsPerChunk, sizeof(float) * 3 * 3, ComputeBufferType.Append);
 
         //ComputeBufferType.Raw because it's just a count of triangles
         bufferTrianglesCount = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
 
-
-        Noise.Instance.CreateBuffers(_nbPointsPerChunk);
+        //DensityValues computed from Noise
+        bufferDensityValues = new ComputeBuffer(nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk, sizeof(float));
     }
 
-    public void Compute(ref Mesh _chunkMesh, int _x, int _y, int _z)
+    public void Edit(float[] _density, Vector3 _hitPos, Vector3 _chunkPos, float _radiusTerraforming, bool _isConstruct)
     {
-        marchingCubesShader.SetBuffer(0, "_DensityValues", Noise.Instance.Compute(_x, _y, _z));
-
-        marchingCubesShader.SetBuffer(0, "_Triangles", bufferTriangles);
+        InitBuffers();
         marchingCubesShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
-        marchingCubesShader.SetFloat("_IsoValue", isoValue);
+        bufferDensityValues.SetData(_density);
 
+        int terraformingIndex = marchingCubesShader.FindKernel("Terraforming");
+
+        marchingCubesShader.SetBuffer(terraformingIndex, "_DensityValues", bufferDensityValues);
+        marchingCubesShader.SetVector("_HitPos", _hitPos);
+        marchingCubesShader.SetVector("_ChunkPos", _chunkPos);
+        marchingCubesShader.SetFloat("_RadiusTerraforming", _radiusTerraforming);
+        marchingCubesShader.SetFloat("_TerraformStrength", _isConstruct ? 1f : -1f);
+        marchingCubesShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
+
+        marchingCubesShader.Dispatch(terraformingIndex, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
+
+        bufferDensityValues.GetData(_density);
+        ReleaseBuffers();
+    }
+
+    public void Compute(ref Mesh _chunkMesh, int _x, int _y, int _z, float[] _density, bool _isEdit = false)
+    {    
+        if (!_isEdit)
+        {
+            InitBuffers();
+            marchingCubesShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
+            bufferDensityValues.SetData(_density);
+        }
+        int marchingCubesIndex = marchingCubesShader.FindKernel("GenerateMarchingCubes");
+
+        marchingCubesShader.SetBuffer(marchingCubesIndex, "_DensityValues", bufferDensityValues);
+        marchingCubesShader.SetBuffer(marchingCubesIndex, "_Triangles", bufferTriangles);
         bufferTriangles.SetCounterValue(0);
 
-        marchingCubesShader.Dispatch(0, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
+        marchingCubesShader.SetFloat("_IsoValue", isoValue);
+
+        marchingCubesShader.Dispatch(marchingCubesIndex, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
 
         ComputeBuffer.CopyCount(bufferTriangles, bufferTrianglesCount, 0);
         int[] trianglesCount = { 0 };
@@ -80,15 +108,18 @@ public class MarchingCubes : MonoBehaviour
             }
         }
 
+        _chunkMesh.Clear();
         _chunkMesh.vertices = vertices;
         _chunkMesh.triangles = triangles;
         _chunkMesh.RecalculateNormals();
+
+        ReleaseBuffers();
     }
 
-    public void ReleaseBuffers()
+    void ReleaseBuffers()
     {
         bufferTriangles.Release();
         bufferTrianglesCount.Release();
-        Noise.Instance.ReleaseBuffers();
+        bufferDensityValues.Release();
     }
 }
