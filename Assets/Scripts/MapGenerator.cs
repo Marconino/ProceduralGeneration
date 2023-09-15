@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class MapGenerator : MonoBehaviour
@@ -15,26 +17,26 @@ public class MapGenerator : MonoBehaviour
 
     enum Directions
     {
-        Left, Right, Up, Down
+        Right, Left, Up, Down, Forward, Back, Count
     }
 
     struct DirectionsOffset
     {
-        public Vector2Int[] offsets;
+        public Vector3Int[] offsets;
     }
 
-    struct Positions
+    public struct Positions
     {
-        public Vector2Int gridPos;
+        public Vector3Int gridPos;
         public Vector3 worldPos;
 
-        public Positions(Vector2Int _gridPos, Vector3 _worldPos)
+        public Positions(Vector3Int _gridPos, Vector3 _worldPos)
         {
             gridPos = _gridPos;
             worldPos = _worldPos;
         }
 
-        public void Set(Vector2Int _gridPos, Vector3 _worldPos)
+        public void Set(Vector3Int _gridPos, Vector3 _worldPos)
         {
             gridPos = _gridPos;
             worldPos = _worldPos;
@@ -57,7 +59,7 @@ public class MapGenerator : MonoBehaviour
     Dictionary<Positions, Chunk> chunks;
 
     //Cached Variables
-    Vector2Int currChunkGridPos;
+    Vector3Int currChunkGridPos;
     Vector3 currChunkWorldPos;
     Positions currChunkPos;
     Chunk currChunk;
@@ -70,44 +72,58 @@ public class MapGenerator : MonoBehaviour
     void Start()
     {
         chunks = new Dictionary<Positions, Chunk>();
-        currChunkGridPos = Vector2Int.zero;
+        currChunkGridPos = Vector3Int.zero;
         currChunkWorldPos = Vector3.zero;
         currChunkPos = new Positions(currChunkGridPos, currChunkWorldPos);
         currChunk = null;
 
         MarchingCubes.Instance.SetNbPointsPerChunk(nbPointsPerChunk);
         Noise.Instance.SetNbPointsPerChunk(nbPointsPerChunk);
+
         InitViewers();
     }
-
+    void Update()
+    {
+        CheckViewersPositions();
+    }
     void InitViewers()
     {
         foreach (Viewer viewer in viewers)
         {
-            Positions viewerPos = new Positions(Vector2Int.zero, Vector3.zero);
+            Positions viewerPos = new Positions(Vector3Int.zero, Vector3.zero);
             viewer.viewerPos = viewerPos;
             viewer.lastViewerPos = viewerPos;
-            viewer.offsetDirections = new DirectionsOffset[4];
+            viewer.offsetDirections = new DirectionsOffset[6];
             int viewDistance = viewer.viewDistance;
 
-            int index = 0;
-
-            viewer.offsetDirections[0].offsets = new Vector2Int[viewDistance * 2 + 1];
-            viewer.offsetDirections[1].offsets = new Vector2Int[viewDistance * 2 + 1];
-            viewer.offsetDirections[2].offsets = new Vector2Int[viewDistance * 2 + 1];
-            viewer.offsetDirections[3].offsets = new Vector2Int[viewDistance * 2 + 1];
-
-            for (int j = -viewDistance; j < viewDistance + 1; j++)
+            for (int currDirection = 0; currDirection < (int)Directions.Count; currDirection++)
             {
+                viewer.offsetDirections[currDirection].offsets = new Vector3Int[(viewDistance * 2 + 1) * (viewDistance * 2 + 1)];
+                int index = 0;
+                int valueNotChanged = currDirection == (int)Directions.Right
+                                   || currDirection == (int)Directions.Up
+                                   || currDirection == (int)Directions.Forward ? viewDistance : -viewDistance;
 
-                viewer.offsetDirections[0].offsets[index] = new Vector2Int(-viewDistance, j); //Left
-                viewer.offsetDirections[1].offsets[index] = new Vector2Int(viewDistance, j);  //Right
-                viewer.offsetDirections[2].offsets[index] = new Vector2Int(j, viewDistance);  //Down
-                viewer.offsetDirections[3].offsets[index] = new Vector2Int(j, -viewDistance); //Up
-
-                index++;
+                for (int i = -viewDistance; i <= viewDistance; i++)
+                {
+                    for (int j = viewDistance; j >= -viewDistance; j--)
+                    {
+                        if (currDirection <= (int)Directions.Left)
+                        {
+                            viewer.offsetDirections[currDirection].offsets[index] = new Vector3Int(valueNotChanged, i, j);
+                        }
+                        else if (currDirection <= (int)Directions.Down)
+                        {
+                            viewer.offsetDirections[currDirection].offsets[index] = new Vector3Int(-j, valueNotChanged, -i);
+                        }
+                        else
+                        {
+                            viewer.offsetDirections[currDirection].offsets[index] = new Vector3Int(j, i, valueNotChanged);
+                        }
+                        index++;
+                    }
+                }
             }
-
             CreateSpawnChunks(viewer);
         }
     }
@@ -118,30 +134,75 @@ public class MapGenerator : MonoBehaviour
 
         for (int z = -viewDistance; z < viewDistance + 1; z++)
         {
-            for (int x = -viewDistance; x < viewDistance + 1; x++)
+            for (int y = -viewDistance; y < viewDistance + 1; y++)
             {
-                currChunkGridPos.Set(x + _viewer.viewerPos.gridPos.x, z + _viewer.viewerPos.gridPos.y);
-                currChunkWorldPos.Set(
-                    (currChunkGridPos.x * nbPointsPerChunk) - currChunkGridPos.x,
-                    0,
-                    (currChunkGridPos.y * nbPointsPerChunk) - currChunkGridPos.y);
+                for (int x = -viewDistance; x < viewDistance + 1; x++)
+                {
+                    currChunkGridPos.Set(x + _viewer.viewerPos.gridPos.x, y + _viewer.viewerPos.gridPos.y, z + _viewer.viewerPos.gridPos.z);
+                    currChunkWorldPos.Set(
+                        (currChunkGridPos.x * nbPointsPerChunk) - currChunkGridPos.x,
+                        (currChunkGridPos.y * nbPointsPerChunk) - currChunkGridPos.y,
+                        (currChunkGridPos.z * nbPointsPerChunk) - currChunkGridPos.z);
 
-                currChunkPos.Set(currChunkGridPos, currChunkWorldPos);
-                currChunk = CreateNewChunk(currChunkPos);
-                currChunk.SetActive(true);
+                    currChunkPos.Set(currChunkGridPos, currChunkWorldPos);
+                    currChunk = CreateNewChunk(currChunkPos);
+                    currChunk.SetActive(true);
+                }
             }
         }
     }
 
-    void UpdateChunks(Vector2Int[] _offsets, Vector2Int _viewerPos, bool _setActive = true)
+    void CheckViewersPositions()
     {
-        foreach (Vector2Int offset in _offsets)
+        foreach (Viewer viewer in viewers)
         {
-            currChunkGridPos.Set(_viewerPos.x + offset.x, _viewerPos.y + offset.y);
+            viewer.viewerPos = GetChunkPosWithWorldPos(viewer.go.transform.position);
+
+            if (viewer.viewerPos.gridPos != viewer.lastViewerPos.gridPos)
+            {
+                LoadAndUnloadChunks(viewer);
+            }
+        }
+    }
+
+    void LoadAndUnloadChunks(Viewer _viewer)
+    {
+        Vector3Int result = _viewer.viewerPos.gridPos - _viewer.lastViewerPos.gridPos;
+        List<Directions> directions = new List<Directions>();
+
+        GetDirections(result, ref directions);
+        for (int i = 0; i < directions.Count; i++)
+        {
+            Directions direction = directions[i];
+
+            UpdateChunks(_viewer.offsetDirections[(int)direction].offsets, _viewer.viewerPos.gridPos);
+
+            //Unload out of range chunks
+            switch (direction)
+            {
+                case Directions.Right: direction = Directions.Left; break;
+                case Directions.Left: direction = Directions.Right; break;
+                case Directions.Up: direction = Directions.Down; break;
+                case Directions.Down: direction = Directions.Up; break;
+                case Directions.Forward: direction = Directions.Back; break;
+                case Directions.Back: direction = Directions.Forward; break;
+
+            }
+
+            UpdateChunks(_viewer.offsetDirections[(int)direction].offsets, _viewer.lastViewerPos.gridPos, false);
+        }
+        _viewer.lastViewerPos.gridPos = _viewer.viewerPos.gridPos;
+    }
+
+    void UpdateChunks(Vector3Int[] _offsets, Vector3Int _viewerPos, bool _setActive = true)
+    {
+        foreach (Vector3Int offset in _offsets)
+        {
+            currChunkGridPos.Set(_viewerPos.x + offset.x, _viewerPos.y + offset.y, _viewerPos.z + offset.z);
             currChunkWorldPos.Set(
                 (currChunkGridPos.x * nbPointsPerChunk) - currChunkGridPos.x,
-                0,
-                (currChunkGridPos.y * nbPointsPerChunk) - currChunkGridPos.y);
+                (currChunkGridPos.y * nbPointsPerChunk) - currChunkGridPos.y,
+                (currChunkGridPos.z * nbPointsPerChunk) - currChunkGridPos.z);
 
             currChunkPos.Set(currChunkGridPos, currChunkWorldPos);
 
@@ -155,39 +216,16 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
-    void Update()
+    void GetDirections(Vector3Int _directionsResult, ref List<Directions> _directions)
     {
-        CheckViewersPositions();
-    }
-
-    void CheckViewersPositions()
-    {
-        foreach (Viewer viewer in viewers)
+        for (int i = 0; i < 3; i++)
         {
-            viewer.viewerPos = GetChunkPosWithWorldPos(viewer.go.transform.position);
+            Directions currDirection = i == 0 ? Directions.Right :
+                                       i == 1 ? Directions.Up : Directions.Forward;
 
-            if (viewer.viewerPos.gridPos != viewer.lastViewerPos.gridPos)
+            if (_directionsResult[i] != 0)
             {
-                Vector2Int viewerPos = viewer.viewerPos.gridPos;
-                Vector2Int result = viewer.viewerPos.gridPos - viewer.lastViewerPos.gridPos;
-                Directions direction = result.x < 0 ? Directions.Left : result.y > 0 ? Directions.Up : result.x > 0 ? Directions.Right : Directions.Down;
-
-                UpdateChunks(viewer.offsetDirections[(int)direction].offsets, viewerPos);
-
-                Directions inverseDirection;
-                //Inverse
-                switch (direction)
-                {
-                    case Directions.Left:  inverseDirection = Directions.Right; viewerPos.x += 1; break;
-                    case Directions.Right: inverseDirection = Directions.Left;  viewerPos.x -= 1; break;
-                    case Directions.Up:    inverseDirection = Directions.Down;  viewerPos.y -= 1; break;
-                    case Directions.Down:  inverseDirection = Directions.Up;    viewerPos.y += 1; break;
-                    default:               inverseDirection = Directions.Left;  break;
-                }
-
-                UpdateChunks(viewer.offsetDirections[(int)inverseDirection].offsets, viewerPos, false);
-
-                viewer.lastViewerPos.gridPos = viewer.viewerPos.gridPos;
+                _directions.Add(_directionsResult[i] < 0 ? currDirection + 1 : currDirection);
             }
         }
     }
@@ -196,7 +234,7 @@ public class MapGenerator : MonoBehaviour
     {
         currChunk = new Chunk("Chunk " + chunks.Count, material);
         currChunk.SetParent(transform);
-        currChunk.CreateChunk(_chunkPositions.worldPos);
+        currChunk.CreateChunk(_chunkPositions);
         chunks.Add(_chunkPositions, currChunk);
         return currChunk;
     }
@@ -210,25 +248,6 @@ public class MapGenerator : MonoBehaviour
     Positions GetChunkPosWithWorldPos(Vector3 pos)
     {
         float middleDist = (nbPointsPerChunk - 1) / 2f;
-
-        Positions chunkPos = chunks.Keys.First(key =>
-        {
-            float minX = key.worldPos.x - middleDist;
-            float maxX = key.worldPos.x + middleDist;
-            float minZ = key.worldPos.z - middleDist;
-            float maxZ = key.worldPos.z + middleDist;
-
-            return pos.x >= minX && pos.x <= maxX && pos.z >= minZ && pos.z <= maxZ;
-        });
-        return chunkPos;
+        return chunks.Values.First(c => c.Contains(pos, middleDist)).GetPositions();
     }
-
-    //private void OnDrawGizmos()
-    //{
-
-    //    foreach (var chunk in chunks)
-    //    {
-    //        chunk.Value.DisplayNoise(nbPointsPerChunk);
-    //    }
-    //}
 }

@@ -16,7 +16,7 @@ RWStructuredBuffer<float> _DensityValues;
 
 int GetIndexFromPos(int x, int y, int z);
 
-[numthreads(8, 8, 8)]
+[numthreads(8,8,8)]
 void GenerateNoise(uint3 id : SV_DispatchThreadID)
 {
     fnl_state noise = fnlCreateState(_Seed);
@@ -27,11 +27,14 @@ void GenerateNoise(uint3 id : SV_DispatchThreadID)
     noise.lacunarity = _Lacunarity;
     //noise.weighted_strength = 0;
     
-    float3 pos = id;
-    float ground = -pos.y + (_GroundOffset * _BlocksPerChunk);
-    float n = ground + fnlGetNoise3D(noise, pos.x + _OffsetX, pos.y + _OffsetY, pos.z + _OffsetZ) * _Amplitude;
-    int currIndex = GetIndexFromPos(id.x, id.y, id.z);
-    _DensityValues[currIndex] = n;
+    //float3 pos = id;
+
+    //float ground = -pos.y + (_GroundOffset * _BlocksPerChunk);
+    //float n = ground + fnlGetNoise3D(noise, pos.x + _OffsetX, pos.y + _OffsetY, pos.z + _OffsetZ) * _Amplitude;
+    //int currIndex = GetIndexFromPos(id.x, id.y, id.z);
+    //_DensityValues[currIndex] = n;
+    
+    _DensityValues[GetIndexFromPos(id.x, id.y, id.z)] = fnlGetNoise3D(noise, id.x + _OffsetX, id.y + _OffsetY, id.z + _OffsetZ);
 
 }
 

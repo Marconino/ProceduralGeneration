@@ -1,3 +1,4 @@
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class Chunk
@@ -7,9 +8,9 @@ public class Chunk
     MeshFilter filter;
     MeshRenderer renderer;
     MeshCollider collider;
-    Vector3 pos;
+    MapGenerator.Positions pos;
     float[] densityValues;
-  
+
     public Chunk(string _name, Material _mat)
     {
         go = new GameObject(_name);
@@ -30,18 +31,19 @@ public class Chunk
     {
         return mesh;
     }
-    public void CreateChunk(Vector3 _pos)
+    public void CreateChunk(MapGenerator.Positions _pos)
     {
-        pos = go.transform.position = _pos;
+        pos = _pos;
+        go.transform.position = pos.worldPos;
 
-        densityValues = Noise.Instance.Compute((int)_pos.x, (int)_pos.y, (int)_pos.z);
-        MarchingCubes.Instance.Compute(ref mesh, (int)_pos.x, (int)_pos.y, (int)_pos.z, densityValues);
+        densityValues = Noise.Instance.Compute((int)pos.worldPos.x, (int)pos.worldPos.y, (int)pos.worldPos.z);
+        MarchingCubes.Instance.Compute(ref mesh, (int)pos.worldPos.x, (int)pos.worldPos.y, (int)pos.worldPos.z, densityValues);
     }
 
-    public void Edit(Vector3 _hitPos, float _radiusTerraforming, bool _isConstruct)
+    public void Edit(Vector3 _hitPos, float _radiusTerraforming, bool _isConstruct, float _strengh)
     {
-        MarchingCubes.Instance.Edit(densityValues, _hitPos, pos, _radiusTerraforming, _isConstruct);
-        MarchingCubes.Instance.Compute(ref mesh, (int)pos.x, (int)pos.y, (int)pos.z, densityValues);
+        MarchingCubes.Instance.Edit(densityValues, _hitPos, pos.worldPos, _radiusTerraforming, _isConstruct, _strengh);
+        MarchingCubes.Instance.Compute(ref mesh, (int)pos.worldPos.x, (int)pos.worldPos.y, (int)pos.worldPos.z, densityValues);
 
         filter.sharedMesh = mesh;
         collider.sharedMesh = mesh;
@@ -59,29 +61,18 @@ public class Chunk
         renderer.enabled = _state;
     }
 
-    public Vector3 GetPos()
+    public MapGenerator.Positions GetPositions()
     {
         return pos;
     }
 
-    //public void DisplayNoise(int _nbPointsPerChunk)
-    //{
-    //    if (densityValues == null || densityValues.Length == 0)
-    //    {
-    //        return;
-    //    }
-    //    for (int x = 0; x < _nbPointsPerChunk; x++)
-    //    {
-    //        for (int y = 0; y < _nbPointsPerChunk; y++)
-    //        {
-    //            for (int z = 0; z < _nbPointsPerChunk; z++)
-    //            {
-    //                int index = x + _nbPointsPerChunk * (y + _nbPointsPerChunk * z);
-    //                float noiseValue = densityValues[index];
-    //                Gizmos.color = Color.Lerp(Color.black, Color.white, noiseValue);
-    //                Gizmos.DrawCube(pos + new Vector3(x - _nbPointsPerChunk / 2f, y - _nbPointsPerChunk / 2f, z - _nbPointsPerChunk / 2f) , Vector3.one * .2f);
-    //            }
-    //        }
-    //    }
-    //}
+    public bool Contains(Vector3 _pos, float _middleDist)
+    {
+        return pos.worldPos.x - _middleDist < _pos.x &&
+            pos.worldPos.x + _middleDist > _pos.x &&
+            pos.worldPos.y - _middleDist < _pos.y &&
+            pos.worldPos.y + _middleDist > _pos.y &&
+            pos.worldPos.z - _middleDist < _pos.z &&
+            pos.worldPos.z + _middleDist > _pos.z;
+    }
 }

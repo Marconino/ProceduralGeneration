@@ -51,7 +51,7 @@ public class MarchingCubes : MonoBehaviour
         bufferDensityValues = new ComputeBuffer(nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk, sizeof(float));
     }
 
-    public void Edit(float[] _density, Vector3 _hitPos, Vector3 _chunkPos, float _radiusTerraforming, bool _isConstruct)
+    public void Edit(float[] _density, Vector3 _hitPos, Vector3 _chunkPos, float _radiusTerraforming, bool _isConstruct, float _strengh)
     {
         InitBuffers();
         marchingCubesShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
@@ -63,8 +63,7 @@ public class MarchingCubes : MonoBehaviour
         marchingCubesShader.SetVector("_HitPos", _hitPos);
         marchingCubesShader.SetVector("_ChunkPos", _chunkPos);
         marchingCubesShader.SetFloat("_RadiusTerraforming", _radiusTerraforming);
-        marchingCubesShader.SetFloat("_TerraformStrength", _isConstruct ? 1f : -1f);
-        marchingCubesShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
+        marchingCubesShader.SetFloat("_TerraformStrength", _isConstruct ? _strengh : -_strengh);
 
         marchingCubesShader.Dispatch(terraformingIndex, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
 

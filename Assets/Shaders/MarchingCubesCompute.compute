@@ -28,7 +28,7 @@ float3 Interpolation(float3 _cood1, float _density1, float3 _cood2, float _densi
 void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = id;
-    if (pos.x >= _BlocksPerChunk - 1 || pos.y >= _BlocksPerChunk - 1 || pos.z >= _BlocksPerChunk - 1)
+    if (pos.x >= _BlocksPerChunk -1 || pos.y >= _BlocksPerChunk-1|| pos.z >= _BlocksPerChunk-1 )
     {
         return;
     }
@@ -67,12 +67,12 @@ void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
 
         currTriangle.A = (verticesOffsets[firstEdgeVertex0] + pos + verticesOffsets[firstEdgeVertex1] + pos) / 2.0;
         currTriangle.B = (verticesOffsets[secondEdgeVertex0] + pos + verticesOffsets[secondEdgeVertex1] + pos) / 2.0;
-        currTriangle.C = (verticesOffsets[thirdEdgeVertex0] + pos + verticesOffsets[thirdEdgeVertex1] + pos) / 2.0;   
+        currTriangle.C = (verticesOffsets[thirdEdgeVertex0] + pos + verticesOffsets[thirdEdgeVertex1] + pos) / 2.0;
         
         currTriangle.A -= _BlocksPerChunk / 2;
         currTriangle.B -= _BlocksPerChunk / 2;
         currTriangle.C -= _BlocksPerChunk / 2;
-
+        
         _Triangles.Append(currTriangle);
     }
 }
@@ -81,11 +81,11 @@ void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
 void Terraforming(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = id;
-    if (pos.x >= _BlocksPerChunk - 1 || pos.y >= _BlocksPerChunk - 1 || pos.z >= _BlocksPerChunk - 1)
+    if (pos.x >= _BlocksPerChunk|| pos.y >= _BlocksPerChunk  || pos.z >= _BlocksPerChunk)
     {
         return;
     }
-    
+
     if (distance(_ChunkPos + float3(pos.x - _BlocksPerChunk / 2, pos.y - _BlocksPerChunk / 2, pos.z - _BlocksPerChunk / 2), _HitPos) <= _RadiusTerraforming)
     {
         _DensityValues[GetIndexFromPos(pos.x, pos.y, pos.z)] += _TerraformStrength;

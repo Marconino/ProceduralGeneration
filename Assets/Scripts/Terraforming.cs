@@ -5,11 +5,12 @@ using UnityEngine;
 public class Terraforming : MonoBehaviour
 {
     [SerializeField] float radiusTerraforming = 2f;
+    [SerializeField] float strength = 1f;
+    [SerializeField] float speed = 1f;
 
     Camera cam;
     RaycastHit[] hits;
-    Chunk currChunk;
-
+    Chunk chunkHitted;
     private void Start()
     {
         cam = GetComponent<Camera>();
@@ -35,35 +36,14 @@ public class Terraforming : MonoBehaviour
 
         if (Physics.RaycastNonAlloc(ray, hits) == 1)
         {
-            Chunk chunkHitted = null;
-            MapGenerator.Instance.GetChunkWithWorldPos(hits[0].point, out chunkHitted);
-            currChunk = chunkHitted;
+            var hitColliders = Physics.OverlapSphere(hits[0].point, radiusTerraforming + 5);
 
-            if (chunkHitted != null)
+            chunkHitted = null;
+            foreach (Collider col in hitColliders)
             {
-                Debug.Log("Je suis aux positions : " + hits[0].point + " et au chunk aux positions : " + chunkHitted.GetPos());
-                Vector3 hitPos = new Vector3(hits[0].point.x, 0, hits[0].point.z);
-                chunkHitted.Edit(hits[0].point, radiusTerraforming, _isConstruct);
+                MapGenerator.Instance.GetChunkWithWorldPos(col.transform.position, out chunkHitted);
+                chunkHitted?.Edit(hits[0].point, radiusTerraforming, _isConstruct, strength * Time.deltaTime * speed);
             }
-
-        }
-    }
-
-    private void OnDrawGizmos()
-    {
-        if (hits != null && hits.Length > 0)
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(hits[0].point, radiusTerraforming);
-            Debug.DrawLine(transform.position, hits[0].point, Color.white, 3f);
-        }
-
-
-        if (currChunk != null)
-        {
-            Gizmos.color = Color.blue;
-            Gizmos.DrawWireMesh(currChunk.GetMesh(), currChunk.GetPos());
-
         }
     }
 }
