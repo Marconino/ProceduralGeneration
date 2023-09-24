@@ -13,6 +13,7 @@ public class MarchingCubes : MonoBehaviour
     ComputeBuffer bufferDensityValues;
 
     int nbPointsPerChunk;
+    int ThreadGroups;
 
     struct Triangle
     {
@@ -32,13 +33,11 @@ public class MarchingCubes : MonoBehaviour
             instance = this;
     }
 
-    public void SetNbPointsPerChunk(int _nbPointsPerChunk)
+    public void InitBuffers(int _currentLOD)
     {
-        nbPointsPerChunk = _nbPointsPerChunk;
-    }
+        nbPointsPerChunk = MapParameters.GetPointsPerChunk(_currentLOD);
+        ThreadGroups = MapParameters.ThreadGroups(_currentLOD);
 
-    void InitBuffers()
-    {
         //Count : 5 triangles max per Cube * All cubes per Chunk
         //Size : triangles = 3 vertices, so 3 floats per vertex 
         int allPointsPerChunk = nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk;
@@ -48,13 +47,13 @@ public class MarchingCubes : MonoBehaviour
         bufferTrianglesCount = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
 
         //DensityValues computed from Noise
-        bufferDensityValues = new ComputeBuffer(nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk, sizeof(float));
+        bufferDensityValues = new ComputeBuffer(allPointsPerChunk, sizeof(float));
     }
 
-    public void Edit(float[] _density, Vector3 _hitPos, Vector3 _chunkPos, float _radiusTerraforming, bool _isConstruct, float _strengh)
+    public void Edit(float[] _density, Vector3 _hitPos, Vector3 _chunkPos, float _radiusTerraforming, bool _isConstruct, float _strengh, int _currentLOD)
     {
-        InitBuffers();
-        marchingCubesShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
+        marchingCubesShader.SetInt("_nbPointsPerChunk", nbPointsPerChunk);
+        marchingCubesShader.SetInt("_ChunkAxisSize", MapParameters.GetChunkAxisSize());
         bufferDensityValues.SetData(_density);
 
         int terraformingIndex = marchingCubesShader.FindKernel("Terraforming");
@@ -65,18 +64,18 @@ public class MarchingCubes : MonoBehaviour
         marchingCubesShader.SetFloat("_RadiusTerraforming", _radiusTerraforming);
         marchingCubesShader.SetFloat("_TerraformStrength", _isConstruct ? _strengh : -_strengh);
 
-        marchingCubesShader.Dispatch(terraformingIndex, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
+        marchingCubesShader.Dispatch(terraformingIndex, ThreadGroups, ThreadGroups, ThreadGroups);
 
         bufferDensityValues.GetData(_density);
-        ReleaseBuffers();
     }
 
-    public void Compute(ref Mesh _chunkMesh, int _x, int _y, int _z, float[] _density, bool _isEdit = false)
+    public Mesh Compute(in float[] _density, int _currentLOD, bool _isEdit = false)
     {    
         if (!_isEdit)
         {
-            InitBuffers();
-            marchingCubesShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
+            InitBuffers(_currentLOD);
+            marchingCubesShader.SetInt("_nbPointsPerChunk", nbPointsPerChunk);
+            marchingCubesShader.SetInt("_ChunkAxisSize", MapParameters.GetChunkAxisSize());
             bufferDensityValues.SetData(_density);
         }
         int marchingCubesIndex = marchingCubesShader.FindKernel("GenerateMarchingCubes");
@@ -87,7 +86,7 @@ public class MarchingCubes : MonoBehaviour
 
         marchingCubesShader.SetFloat("_IsoValue", isoValue);
 
-        marchingCubesShader.Dispatch(marchingCubesIndex, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
+        marchingCubesShader.Dispatch(marchingCubesIndex, ThreadGroups, ThreadGroups, ThreadGroups);
 
         ComputeBuffer.CopyCount(bufferTriangles, bufferTrianglesCount, 0);
         int[] trianglesCount = { 0 };
@@ -107,12 +106,14 @@ public class MarchingCubes : MonoBehaviour
             }
         }
 
-        _chunkMesh.Clear();
-        _chunkMesh.vertices = vertices;
-        _chunkMesh.triangles = triangles;
-        _chunkMesh.RecalculateNormals();
+        Mesh chunkMesh = new Mesh();
+        chunkMesh.Clear();
+        chunkMesh.vertices = vertices;
+        chunkMesh.triangles = triangles;
+        chunkMesh.RecalculateNormals();
 
         ReleaseBuffers();
+        return chunkMesh;
     }
 
     void ReleaseBuffers()

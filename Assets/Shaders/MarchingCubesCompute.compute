@@ -10,7 +10,7 @@ struct Triangle
     float3 C;
 };
 
-int _BlocksPerChunk;
+int _nbPointsPerChunk;
 float _IsoValue;
 RWStructuredBuffer<float> _DensityValues;
 AppendStructuredBuffer<Triangle> _Triangles;
@@ -19,22 +19,24 @@ float3 _HitPos;
 float _RadiusTerraforming;
 float _TerraformStrength;
 float3 _ChunkPos;
+int _ChunkAxisSize;
 
 int GetIndexFromPos(int x, int y, int z);
 float3 GetVerticesOffset(int i);
 float3 Interpolation(float3 _cood1, float _density1, float3 _cood2, float _density2);
 
-[numthreads(8,8,8)]
+[numthreads(8, 8, 8)]
 void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = id;
-    if (pos.x >= _BlocksPerChunk -1 || pos.y >= _BlocksPerChunk-1|| pos.z >= _BlocksPerChunk-1 )
+    if (pos.x >= _nbPointsPerChunk - 1 || pos.y >= _nbPointsPerChunk - 1 || pos.z >= _nbPointsPerChunk - 1)
     {
         return;
     }
     
     int flagIndex = 0;
     float currDensityValues[8];
+    
     for (int i = 0; i < 8; i++)
     {
         float3 nextPos = pos + verticesOffsets[i];
@@ -45,8 +47,9 @@ void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
     }
 
     int edges[] = triTable[flagIndex];
+
     for (int j = 0; edges[j] != -1; j += 3)
-    {       
+    {
         int firstEdgeVertex0 = edgeVertices[edges[j]][0];
         int firstEdgeVertex1 = edgeVertices[edges[j]][1];
         
@@ -65,28 +68,39 @@ void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
         //currTriangle.C = Interpolation(verticesOffsets[thirdEdgeVertex0] + pos, currDensityValues[thirdEdgeVertex0],
         //                               verticesOffsets[thirdEdgeVertex1] + pos, currDensityValues[thirdEdgeVertex1]);
 
-        currTriangle.A = (verticesOffsets[firstEdgeVertex0] + pos + verticesOffsets[firstEdgeVertex1] + pos) / 2.0;
-        currTriangle.B = (verticesOffsets[secondEdgeVertex0] + pos + verticesOffsets[secondEdgeVertex1] + pos) / 2.0;
-        currTriangle.C = (verticesOffsets[thirdEdgeVertex0] + pos + verticesOffsets[thirdEdgeVertex1] + pos) / 2.0;
+        currTriangle.A = ((verticesOffsets[firstEdgeVertex0] + verticesOffsets[firstEdgeVertex1]) / 2) + pos;
+        currTriangle.B = ((verticesOffsets[secondEdgeVertex0] + verticesOffsets[secondEdgeVertex1]) / 2) + pos;
+        currTriangle.C = ((verticesOffsets[thirdEdgeVertex0] + verticesOffsets[thirdEdgeVertex1]) / 2) + pos;
         
-        currTriangle.A -= _BlocksPerChunk / 2;
-        currTriangle.B -= _BlocksPerChunk / 2;
-        currTriangle.C -= _BlocksPerChunk / 2;
+        //Scaling   
+        currTriangle.A = (currTriangle.A / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
+        currTriangle.B = (currTriangle.B / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
+        currTriangle.C = (currTriangle.C / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
+        
+        //Centering
+        currTriangle.A -= _ChunkAxisSize / 2.0;
+        currTriangle.B -= _ChunkAxisSize / 2.0;
+        currTriangle.C -= _ChunkAxisSize / 2.0;
         
         _Triangles.Append(currTriangle);
     }
 }
 
-[numthreads(8,8,8)]
+[numthreads(8, 8, 8)]
 void Terraforming(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = id;
-    if (pos.x >= _BlocksPerChunk|| pos.y >= _BlocksPerChunk  || pos.z >= _BlocksPerChunk)
-    {
-        return;
-    }
 
-    if (distance(_ChunkPos + float3(pos.x - _BlocksPerChunk / 2, pos.y - _BlocksPerChunk / 2, pos.z - _BlocksPerChunk / 2), _HitPos) <= _RadiusTerraforming)
+    
+    //pos.x = (pos.x / (_nbPointsPerChunk - 1)) * _ChunkSize;
+    //pos.y = (pos.y / (_nbPointsPerChunk - 1)) * _ChunkSize;
+    //pos.z = (pos.z / (_nbPointsPerChunk - 1)) * _ChunkSize;
+    
+    //_ChunkPos.x -= (_ChunkSize / 2.0) -_RadiusTerraforming / 2.0;
+    //_ChunkPos.y -= (_ChunkSize / 2.0) -_RadiusTerraforming / 2.0;
+    //_ChunkPos.z -= (_ChunkSize / 2.0) -_RadiusTerraforming / 2.0;
+    
+    if (distance(_ChunkPos + float3(pos.x - _ChunkAxisSize / 2.0, pos.y - _ChunkAxisSize / 2.0, pos.z - _ChunkAxisSize / 2.0), _HitPos) <= _RadiusTerraforming)
     {
         _DensityValues[GetIndexFromPos(pos.x, pos.y, pos.z)] += _TerraformStrength;
     }
@@ -94,7 +108,7 @@ void Terraforming(uint3 id : SV_DispatchThreadID)
 
 int GetIndexFromPos(int x, int y, int z)
 {
-    return x + _BlocksPerChunk * (y + _BlocksPerChunk * z);
+    return x + _nbPointsPerChunk * (y + _nbPointsPerChunk * z);
 }
 
 float3 Interpolation(float3 _cood1, float _density1, float3 _cood2, float _density2)

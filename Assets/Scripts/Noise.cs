@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 
-
 public class Noise : MonoBehaviour
 {
     static Noise instance;
@@ -14,11 +13,13 @@ public class Noise : MonoBehaviour
     [SerializeField] float frequency = 0.005f;
     [SerializeField] float lacunarity = 2f;
     [SerializeField] float groundOffset = 0.2f;
-    int nbPointsPerChunk;
 
     [SerializeField] ComputeShader noiseShader;
     ComputeBuffer bufferDensityValues;
     float[] densityValues;
+
+    int nbPointsPerChunk;
+    int ThreadGroups;
 
     void Awake()
     {
@@ -26,23 +27,23 @@ public class Noise : MonoBehaviour
             instance = this;
     }
 
-    public void SetNbPointsPerChunk(int _nbPointsPerChunk)
+    void InitBuffers(int _currentLOD)
     {
-        nbPointsPerChunk = _nbPointsPerChunk;
+        nbPointsPerChunk = MapParameters.GetPointsPerChunk(_currentLOD);
+        ThreadGroups = MapParameters.ThreadGroups(_currentLOD);
+
+        int allPointsPerChunk = nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk;
+        
+        bufferDensityValues = new ComputeBuffer(allPointsPerChunk, sizeof(float));
+        densityValues = new float[allPointsPerChunk];
     }
 
-    void InitBuffers()
+    public float[] Compute(float _x, float _y, float _z, int _currentLOD)
     {
-        bufferDensityValues = new ComputeBuffer(nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk, sizeof(float));
-        densityValues = new float[nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk];
-    }
-
-    public float[] Compute(int _x, int _y, int _z)
-    {
-        InitBuffers();
+        InitBuffers(_currentLOD);
         noiseShader.SetBuffer(0, "_DensityValues", bufferDensityValues);
 
-        noiseShader.SetInt("_BlocksPerChunk", nbPointsPerChunk);
+        noiseShader.SetInt("_nbPointsPerChunk", nbPointsPerChunk);
         noiseShader.SetInt("_Octaves", octaves);
         noiseShader.SetInt("_Seed", seed);
         noiseShader.SetFloat("_Amplitude", amplitude);
@@ -53,9 +54,8 @@ public class Noise : MonoBehaviour
         noiseShader.SetFloat("_OffsetY", _y);
         noiseShader.SetFloat("_OffsetZ", _z);
 
-        noiseShader.Dispatch(0, nbPointsPerChunk / 8, nbPointsPerChunk / 8, nbPointsPerChunk / 8);
+        noiseShader.Dispatch(0, ThreadGroups, ThreadGroups, ThreadGroups);
         bufferDensityValues.GetData(densityValues);
-
         ReleaseBuffers();
         return densityValues;
     }

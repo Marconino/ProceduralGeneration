@@ -1,78 +1,89 @@
+using System.Globalization;
 using Unity.VisualScripting;
 using UnityEngine;
 
 public class Chunk
 {
-    GameObject go;
-    Mesh mesh;
-    MeshFilter filter;
-    MeshRenderer renderer;
-    MeshCollider collider;
-    MapGenerator.Positions pos;
-    float[] densityValues;
+    Mesh[] meshes;
+    MapParameters.Positions pos;
+    public Bounds chunkBounds;
+    float[][] LODValues;
+    int currentLOD;
 
-    public Chunk(string _name, Material _mat)
+    public Chunk()
     {
-        go = new GameObject(_name);
-        mesh = new Mesh();
-        filter = go.AddComponent<MeshFilter>();
-        renderer = go.AddComponent<MeshRenderer>();
-        collider = go.AddComponent<MeshCollider>();
-
-        filter.sharedMesh = mesh;
-        renderer.material = _mat;
-        collider.sharedMesh = mesh;
-
-        renderer.enabled = false;
-        collider.enabled = false;
-        go.SetActive(false);
+        LODValues = new float[MapParameters.GetLODCount()][];
+        meshes = new Mesh[MapParameters.GetLODCount()];
     }
-    public Mesh GetMesh()
-    {
-        return mesh;
-    }
-    public void CreateChunk(MapGenerator.Positions _pos)
+
+    public void Init(MapParameters.Positions _pos)
     {
         pos = _pos;
-        go.transform.position = pos.worldPos;
+        chunkBounds = new Bounds(pos.world, MapParameters.GetChunkSize());
+    }
 
-        densityValues = Noise.Instance.Compute((int)pos.worldPos.x, (int)pos.worldPos.y, (int)pos.worldPos.z);
-        MarchingCubes.Instance.Compute(ref mesh, (int)pos.worldPos.x, (int)pos.worldPos.y, (int)pos.worldPos.z, densityValues);
+    void ComputeNoise()
+    {
+        int nbPoints = MapParameters.GetPointsPerChunk(currentLOD) - 1;
+        LODValues[currentLOD] = Noise.Instance.Compute(pos.grid.x * nbPoints, pos.grid.y * nbPoints, pos.grid.z * nbPoints, currentLOD);
+    }
+    void ComputeMarchingCubes()
+    {
+        meshes[currentLOD] = MarchingCubes.Instance.Compute(LODValues[currentLOD], currentLOD);
     }
 
     public void Edit(Vector3 _hitPos, float _radiusTerraforming, bool _isConstruct, float _strengh)
     {
-        MarchingCubes.Instance.Edit(densityValues, _hitPos, pos.worldPos, _radiusTerraforming, _isConstruct, _strengh);
-        MarchingCubes.Instance.Compute(ref mesh, (int)pos.worldPos.x, (int)pos.worldPos.y, (int)pos.worldPos.z, densityValues);
+        MarchingCubes.Instance.Edit(LODValues[currentLOD], _hitPos, pos.world, _radiusTerraforming, _isConstruct, _strengh, currentLOD);
+        meshes[currentLOD] = MarchingCubes.Instance.Compute(LODValues[currentLOD], currentLOD, true);
 
-        filter.sharedMesh = mesh;
-        collider.sharedMesh = mesh;
+        //filter.sharedMesh = meshes[currentLOD];
+        //collider.sharedMesh = meshes[currentLOD];
     }
 
-    public void SetParent(Transform _parent)
+    public void SetLOD(int _lod)
     {
-        go.transform.SetParent(_parent);
+        currentLOD = _lod;
+
+        if (meshes[currentLOD] == null)
+        {
+            ComputeNoise();
+            ComputeMarchingCubes();
+        }
+
+        //collider.sharedMesh = meshes[currentLOD];
+        //filter.sharedMesh = meshes[currentLOD];
     }
 
-    public void SetActive(bool _state)
+    public Mesh GetCurrentMesh()
     {
-        go.SetActive(_state);
-        collider.enabled = _state;
-        renderer.enabled = _state;
+        return meshes[currentLOD];
     }
 
-    public MapGenerator.Positions GetPositions()
+    public int GetLOD()
+    {
+        return currentLOD;
+    }
+
+    public MapParameters.Positions GetPositions()
     {
         return pos;
     }
 
-    public bool Contains(Vector3 _pos, float _middleDist)
+    public bool Contains(Vector3 _pos)
     {
-        return pos.worldPos.x - _middleDist < _pos.x &&
-            pos.worldPos.x + _middleDist > _pos.x &&
-            pos.worldPos.y - _middleDist < _pos.y &&
-            pos.worldPos.y + _middleDist > _pos.y &&
-            pos.worldPos.z - _middleDist < _pos.z &&
-            pos.worldPos.z + _middleDist > _pos.z;
+        return chunkBounds.Contains(_pos);
+    }
+
+    public bool Intersects(Bounds _bounds)
+    {
+        return chunkBounds.Intersects(_bounds);
+
+        //return pos.worldPos.x - _middleDist < _pos.x &&
+        //    pos.worldPos.x + _middleDist > _pos.x &&
+        //    pos.worldPos.y - _middleDist < _pos.y &&
+        //    pos.worldPos.y + _middleDist > _pos.y &&
+        //    pos.worldPos.z - _middleDist < _pos.z &&
+        //    pos.worldPos.z + _middleDist > _pos.z;
     }
 }

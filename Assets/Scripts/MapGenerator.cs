@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class MapGenerator : MonoBehaviour
@@ -11,58 +10,20 @@ public class MapGenerator : MonoBehaviour
     public static MapGenerator Instance { get => instance; }
 
     [Header("Map Parameters")]
-    [SerializeField, Range(1, 5)] int LOD = 1;
-    [SerializeField, Min(2), Tooltip("Multiple of 8")] int nbPointsPerChunk = 8;
+    [SerializeField] Vector2Int HeightLimit;
     [SerializeField] Material material;
+    [SerializeField] Viewer viewer;
+    float[] LODThresholds;
 
-    enum Directions
-    {
-        Right, Left, Up, Down, Forward, Back, Count
-    }
-
-    struct DirectionsOffset
-    {
-        public Vector3Int[] offsets;
-    }
-
-    public struct Positions
-    {
-        public Vector3Int gridPos;
-        public Vector3 worldPos;
-
-        public Positions(Vector3Int _gridPos, Vector3 _worldPos)
-        {
-            gridPos = _gridPos;
-            worldPos = _worldPos;
-        }
-
-        public void Set(Vector3Int _gridPos, Vector3 _worldPos)
-        {
-            gridPos = _gridPos;
-            worldPos = _worldPos;
-        }
-    }
-
-    [Serializable]
-    class Viewer
-    {
-        public GameObject go;
-        public int viewDistance;
-        [HideInInspector] public Positions viewerPos;
-        [HideInInspector] public Positions lastViewerPos;
-        [HideInInspector] public DirectionsOffset[] offsetDirections;
-    }
-
-    [Header("Viewers Parameters")]
-    [SerializeField] Viewer[] viewers;
-
-    Dictionary<Positions, Chunk> chunks;
+    Dictionary<MapParameters.Positions, Chunk> chunks;
 
     //Cached Variables
     Vector3Int currChunkGridPos;
     Vector3 currChunkWorldPos;
-    Positions currChunkPos;
-    Chunk currChunk;
+    MapParameters.Positions currChunkPos;
+
+    //Pooling chunks
+    PooledGameObject[] pooledGameObjects;
 
     void Awake()
     {
@@ -71,157 +32,186 @@ public class MapGenerator : MonoBehaviour
     }
     void Start()
     {
-        chunks = new Dictionary<Positions, Chunk>();
+        chunks = new Dictionary<MapParameters.Positions, Chunk>();
         currChunkGridPos = Vector3Int.zero;
         currChunkWorldPos = Vector3.zero;
-        currChunkPos = new Positions(currChunkGridPos, currChunkWorldPos);
-        currChunk = null;
+        currChunkPos = new MapParameters.Positions(currChunkGridPos, currChunkWorldPos);
 
-        MarchingCubes.Instance.SetNbPointsPerChunk(nbPointsPerChunk);
-        Noise.Instance.SetNbPointsPerChunk(nbPointsPerChunk);
+        LODThresholds = new float[]
+        {
+            0.5f, 0.85f
+        };
 
-        InitViewers();
+        int nbGOPerAxis = viewer.GetViewDistance() * 2 + 1;
+        pooledGameObjects = new PooledGameObject[nbGOPerAxis * nbGOPerAxis * nbGOPerAxis];
+
+        InitSpawn();
     }
     void Update()
     {
-        CheckViewersPositions();
-    }
-    void InitViewers()
-    {
-        foreach (Viewer viewer in viewers)
-        {
-            Positions viewerPos = new Positions(Vector3Int.zero, Vector3.zero);
-            viewer.viewerPos = viewerPos;
-            viewer.lastViewerPos = viewerPos;
-            viewer.offsetDirections = new DirectionsOffset[6];
-            int viewDistance = viewer.viewDistance;
-
-            for (int currDirection = 0; currDirection < (int)Directions.Count; currDirection++)
-            {
-                viewer.offsetDirections[currDirection].offsets = new Vector3Int[(viewDistance * 2 + 1) * (viewDistance * 2 + 1)];
-                int index = 0;
-                int valueNotChanged = currDirection == (int)Directions.Right
-                                   || currDirection == (int)Directions.Up
-                                   || currDirection == (int)Directions.Forward ? viewDistance : -viewDistance;
-
-                for (int i = -viewDistance; i <= viewDistance; i++)
-                {
-                    for (int j = viewDistance; j >= -viewDistance; j--)
-                    {
-                        if (currDirection <= (int)Directions.Left)
-                        {
-                            viewer.offsetDirections[currDirection].offsets[index] = new Vector3Int(valueNotChanged, i, j);
-                        }
-                        else if (currDirection <= (int)Directions.Down)
-                        {
-                            viewer.offsetDirections[currDirection].offsets[index] = new Vector3Int(-j, valueNotChanged, -i);
-                        }
-                        else
-                        {
-                            viewer.offsetDirections[currDirection].offsets[index] = new Vector3Int(j, i, valueNotChanged);
-                        }
-                        index++;
-                    }
-                }
-            }
-            CreateSpawnChunks(viewer);
-        }
+        CheckViewerPositions();
     }
 
-    void CreateSpawnChunks(Viewer _viewer)
+    void InitSpawn()
     {
-        int viewDistance = _viewer.viewDistance;
+        int viewDistance = viewer.GetViewDistance();
 
-        for (int z = -viewDistance; z < viewDistance + 1; z++)
+        int goCount = 0;
+        for (int z = -viewDistance; z <= viewDistance; z++)
         {
-            for (int y = -viewDistance; y < viewDistance + 1; y++)
+            for (int y = -viewDistance; y <= viewDistance; y++)
             {
-                for (int x = -viewDistance; x < viewDistance + 1; x++)
+                for (int x = -viewDistance; x <= viewDistance; x++)
                 {
-                    currChunkGridPos.Set(x + _viewer.viewerPos.gridPos.x, y + _viewer.viewerPos.gridPos.y, z + _viewer.viewerPos.gridPos.z);
-                    currChunkWorldPos.Set(
-                        (currChunkGridPos.x * nbPointsPerChunk) - currChunkGridPos.x,
-                        (currChunkGridPos.y * nbPointsPerChunk) - currChunkGridPos.y,
-                        (currChunkGridPos.z * nbPointsPerChunk) - currChunkGridPos.z);
-
+                    currChunkGridPos.Set(x, y, z);
+                    SetGridPosToWorldPos(currChunkGridPos);
                     currChunkPos.Set(currChunkGridPos, currChunkWorldPos);
-                    currChunk = CreateNewChunk(currChunkPos);
-                    currChunk.SetActive(true);
+
+                    GameObject go = new GameObject("GO_pooled_" + goCount);
+                    MeshFilter filter = go.AddComponent<MeshFilter>();
+                    MeshCollider collider = go.AddComponent<MeshCollider>();
+                    MeshRenderer renderer = go.AddComponent<MeshRenderer>();
+                    renderer.material = material;
+
+                    PooledGameObject pooledGameObject = new PooledGameObject(go, currChunkPos, filter, collider, renderer, transform);
+                    pooledGameObjects[goCount++] = pooledGameObject; 
+
+                    int distance = GetDistanceWithChunk(currChunkGridPos);
+                    int lod = GetLODWithGridPos(distance);
+                    AddChunk(currChunkPos);
+                    SetChunkMeshOnPooledGameObject(pooledGameObject, lod);
                 }
             }
         }
     }
 
-    void CheckViewersPositions()
+    void CheckViewerPositions()
     {
-        foreach (Viewer viewer in viewers)
-        {
-            viewer.viewerPos = GetChunkPosWithWorldPos(viewer.go.transform.position);
+        Vector3Int chunkGridPos = GetChunkPos(viewer.GetCurrentWorldPosition()).grid;
+        viewer.SetCurrentGridPos(chunkGridPos);
 
-            if (viewer.viewerPos.gridPos != viewer.lastViewerPos.gridPos)
-            {
-                LoadAndUnloadChunks(viewer);
-            }
+        if (viewer.GetCurrentGridPosition() != viewer.GetLastGridPosition())
+        {
+            LoadAndUnloadChunks();
+            UpdateLODs();
         }
     }
 
-    void LoadAndUnloadChunks(Viewer _viewer)
+    void LoadAndUnloadChunks()
     {
-        Vector3Int result = _viewer.viewerPos.gridPos - _viewer.lastViewerPos.gridPos;
-        List<Directions> directions = new List<Directions>();
+        Vector3Int result = viewer.GetCurrentGridPosition() - viewer.GetLastGridPosition();
+        List<MapParameters.Directions> directions = new List<MapParameters.Directions>();
 
         GetDirections(result, ref directions);
         for (int i = 0; i < directions.Count; i++)
         {
-            Directions direction = directions[i];
+            MapParameters.Directions direction = directions[i];
 
-            UpdateChunks(_viewer.offsetDirections[(int)direction].offsets, _viewer.viewerPos.gridPos);
+            bool isPositive = (int)direction % 2 == 0 ? true : false;
+            MapParameters.Directions inverseDirection = isPositive ? direction + 1 : direction - 1;
 
-            //Unload out of range chunks
-            switch (direction)
-            {
-                case Directions.Right: direction = Directions.Left; break;
-                case Directions.Left: direction = Directions.Right; break;
-                case Directions.Up: direction = Directions.Down; break;
-                case Directions.Down: direction = Directions.Up; break;
-                case Directions.Forward: direction = Directions.Back; break;
-                case Directions.Back: direction = Directions.Forward; break;
-
-            }
-
-            UpdateChunks(_viewer.offsetDirections[(int)direction].offsets, _viewer.lastViewerPos.gridPos, false);
+            ClearPooledOldChunks(inverseDirection);
+            LoadChunks(direction);
         }
-        _viewer.lastViewerPos.gridPos = _viewer.viewerPos.gridPos;
+        viewer.SetLastGridPos(viewer.GetCurrentGridPosition());
     }
 
-    void UpdateChunks(Vector3Int[] _offsets, Vector3Int _viewerPos, bool _setActive = true)
+    void ClearPooledOldChunks(MapParameters.Directions _inverseDirection)
     {
-        foreach (Vector3Int offset in _offsets)
-        {
-            currChunkGridPos.Set(_viewerPos.x + offset.x, _viewerPos.y + offset.y, _viewerPos.z + offset.z);
-            currChunkWorldPos.Set(
-                (currChunkGridPos.x * nbPointsPerChunk) - currChunkGridPos.x,
-                (currChunkGridPos.y * nbPointsPerChunk) - currChunkGridPos.y,
-                (currChunkGridPos.z * nbPointsPerChunk) - currChunkGridPos.z);
+        Vector3Int currentGridPos = viewer.GetLastGridPosition();
 
+        foreach (Vector3Int offset in viewer.GetOffsetDirection(_inverseDirection))
+        {
+            currChunkGridPos.Set(currentGridPos.x + offset.x,
+                                 currentGridPos.y + offset.y,
+                                 currentGridPos.z + offset.z);
+            SetGridPosToWorldPos(currChunkGridPos);
             currChunkPos.Set(currChunkGridPos, currChunkWorldPos);
 
-            bool hasChunk = chunks.TryGetValue(currChunkPos, out currChunk);
-
-            if (!hasChunk)
-            {
-                CreateNewChunk(currChunkPos);
-            }
-            currChunk.SetActive(_setActive);
+            PooledGameObject pooledGameObject = pooledGameObjects.First(g => g.GetPositions().grid == currChunkGridPos);
+            pooledGameObject.SetState(false);
         }
     }
 
-    void GetDirections(Vector3Int _directionsResult, ref List<Directions> _directions)
+    void LoadChunks(MapParameters.Directions _direction)
+    {
+        Vector3Int currentGridPos = viewer.GetCurrentGridPosition();
+
+        foreach (Vector3Int offset in viewer.GetOffsetDirection(_direction))
+        {
+            currChunkGridPos.Set(currentGridPos.x + offset.x,
+                     currentGridPos.y + offset.y,
+                     currentGridPos.z + offset.z);
+            SetGridPosToWorldPos(currChunkGridPos);
+            currChunkPos.Set(currChunkGridPos, currChunkWorldPos);
+
+            Chunk chunk;
+            bool hasChunk = chunks.TryGetValue(currChunkPos, out chunk);
+            if (!hasChunk)
+            {
+                chunk = AddChunk(currChunkPos);
+            }
+
+            PooledGameObject pooledGameObject = pooledGameObjects.First(g => !g.GetState());
+            pooledGameObject.SetPositions(currChunkPos);  
+            pooledGameObject.SetCurrentMesh(chunk.GetCurrentMesh());
+            pooledGameObject.SetState(true);
+        }
+    }
+
+    void UpdateLODs()
+    {
+        foreach (PooledGameObject pooledGameObject in pooledGameObjects)
+        {
+            int distance = GetDistanceWithChunk(pooledGameObject.GetPositions().grid);
+            int lod = GetLODWithGridPos(distance);
+            SetChunkMeshOnPooledGameObject(pooledGameObject, lod);
+        }
+    }
+
+    int GetLODWithGridPos(int _distance)
+    {
+        float weight = _distance / (float)viewer.GetViewDistance();
+
+        int lod = 0;
+        for (int i = 0; i < LODThresholds.Length; i++)
+        {
+            if (weight <= LODThresholds[i])
+            {
+                lod = LODThresholds.Length - i;
+                break;
+            }
+        }
+        return lod;
+    }
+
+    int GetDistanceWithChunk(Vector3Int _chunkGridPos)
+    {
+        Vector3Int distanceVec = viewer.GetCurrentGridPosition() - _chunkGridPos;
+        for (int i = 0; i < 3; i++)
+        {
+            if (distanceVec[i] < 0)
+                distanceVec[i] = Mathf.Abs(distanceVec[i]);
+        }
+
+        return Mathf.Max(distanceVec.x, distanceVec.y, distanceVec.z);
+    }
+
+    int GetDistanceWithChunk(Vector3Int _chunkGridPos, MapParameters.Directions _direction)
+    {
+        bool isPositive = (int)_direction % 2 == 0 ? true : false;
+        int currentAxis = isPositive ? (int)_direction / 2 : ((int)_direction - 1) / 2;
+
+        return Mathf.Abs(viewer.GetCurrentGridPosition()[currentAxis] - _chunkGridPos[currentAxis]);
+    }
+
+    void GetDirections(Vector3Int _directionsResult, ref List<MapParameters.Directions> _directions)
     {
         for (int i = 0; i < 3; i++)
         {
-            Directions currDirection = i == 0 ? Directions.Right :
-                                       i == 1 ? Directions.Up : Directions.Forward;
+            MapParameters.Directions currDirection = i == 0 ? MapParameters.Directions.Right :
+                                                     i == 1 ? MapParameters.Directions.Up : 
+                                                     MapParameters.Directions.Forward;
 
             if (_directionsResult[i] != 0)
             {
@@ -230,24 +220,85 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
-    Chunk CreateNewChunk(Positions _chunkPositions)
+    Chunk AddChunk(MapParameters.Positions _chunkPos)
     {
-        currChunk = new Chunk("Chunk " + chunks.Count, material);
-        currChunk.SetParent(transform);
-        currChunk.CreateChunk(_chunkPositions);
-        chunks.Add(_chunkPositions, currChunk);
-        return currChunk;
+        Chunk newChunk = new Chunk();
+        newChunk.Init(_chunkPos);
+        chunks.Add(_chunkPos, newChunk);
+        return newChunk;
+    }
+
+    void SetChunkMeshOnPooledGameObject(PooledGameObject _pooledGameObject, int _lod)
+    {
+        MapParameters.Positions pos = _pooledGameObject.GetPositions();
+
+        Chunk chunk;
+        chunks.TryGetValue(pos, out chunk);
+        chunk.SetLOD(0);
+
+        _pooledGameObject.SetCurrentMesh(chunk.GetCurrentMesh());
+    }
+
+    void SetGridPosToWorldPos(Vector3Int _gridPos)
+    {
+        currChunkWorldPos.Set((_gridPos.x * MapParameters.GetChunkAxisSize()),
+                        (_gridPos.y * MapParameters.GetChunkAxisSize()),
+                        (_gridPos.z * MapParameters.GetChunkAxisSize()));
+    }
+
+    MapParameters.Positions GetChunkPos(Vector3 _worldPos)
+    {
+        Chunk chunk = null;
+        GetChunkWithWorldPos(_worldPos, out chunk);
+        return chunk.GetPositions();
     }
 
     public void GetChunkWithWorldPos(Vector3 _worldPos, out Chunk _chunk)
     {
-        Positions chunkPos = GetChunkPosWithWorldPos(_worldPos);
-        chunks.TryGetValue(chunkPos, out _chunk);
+        _chunk = chunks.Values.DefaultIfEmpty(null).FirstOrDefault(c => c.Contains(_worldPos));
     }
 
-    Positions GetChunkPosWithWorldPos(Vector3 pos)
+    public void GetChunksWithWorldPos(Bounds _bounds, out Chunk[] _chunks)
     {
-        float middleDist = (nbPointsPerChunk - 1) / 2f;
-        return chunks.Values.First(c => c.Contains(pos, middleDist)).GetPositions();
+        _chunks = chunks.Values.Where(c => c.Intersects(_bounds)).ToArray();
+    }
+
+    private void OnDrawGizmos()
+    {
+        foreach (PooledGameObject pooledGameObject in pooledGameObjects)
+        {
+            //Vector3 offset = new Vector3(MapParameters.ChunkSize / 2f, MapParameters.ChunkSize / 2f, MapParameters.ChunkSize / 2f);
+            //Vector3 center = chunk.GetPositions().worldPos;
+
+            //Gizmos.color = Color.yellow;
+            //Gizmos.DrawLine(center, center + new Vector3(MapParameters.ChunkSize / 2f, 0, 0));
+            //Gizmos.color = Color.yellow;
+            //Gizmos.DrawLine(center, center - new Vector3(MapParameters.ChunkSize / 2f, 0, 0));
+            //Gizmos.color = Color.yellow;
+            //Gizmos.DrawLine(center, center + new Vector3(0, 0, MapParameters.ChunkSize / 2f));
+            //Gizmos.color = Color.yellow;
+            //Gizmos.DrawLine(center, center - new Vector3(0, 0, MapParameters.ChunkSize / 2f));
+            //Gizmos.color = Color.yellow;
+            //Gizmos.DrawLine(center, center + new Vector3(0, MapParameters.ChunkSize / 2f, 0));
+            //Gizmos.color = Color.yellow;
+            //Gizmos.DrawLine(center, center - new Vector3(0, MapParameters.ChunkSize / 2f, 0));
+            Chunk chunk;
+            chunks.TryGetValue(pooledGameObject.GetPositions(), out chunk);
+            if (chunk.GetLOD() == 0 && Input.GetKey(KeyCode.Keypad0))
+            {
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawWireCube(chunk.chunkBounds.center, chunk.chunkBounds.size);
+            }
+            else if (chunk.GetLOD() == 1 && Input.GetKey(KeyCode.Keypad1))
+            {
+                Gizmos.color = Color.cyan;
+                Gizmos.DrawWireCube(chunk.chunkBounds.center, chunk.chunkBounds.size);
+            }
+            else if (chunk.GetLOD() == 2 && Input.GetKey(KeyCode.Keypad2))
+            {
+                Gizmos.color = Color.black;
+                Gizmos.DrawWireCube(chunk.chunkBounds.center, chunk.chunkBounds.size);
+            }
+        }
     }
 }
