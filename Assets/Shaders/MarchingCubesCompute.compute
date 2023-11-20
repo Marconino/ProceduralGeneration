@@ -11,6 +11,7 @@ struct Triangle
 };
 
 int _nbPointsPerChunk;
+int _ThreadGroups;
 float _IsoValue;
 RWStructuredBuffer<float> _DensityValues;
 AppendStructuredBuffer<Triangle> _Triangles;
@@ -21,14 +22,21 @@ float _TerraformStrength;
 float3 _ChunkPos;
 int _ChunkAxisSize;
 
-int GetIndexFromPos(int x, int y, int z);
 float3 GetVerticesOffset(int i);
 float3 Interpolation(float3 _cood1, float _density1, float3 _cood2, float _density2);
 
+int GetThreadOffset(uint3 _groupID);
+
 [numthreads(8, 8, 8)]
-void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
+void GenerateMarchingCubes(uint thread1DID : SV_GroupIndex, uint3 groupID : SV_GroupID)
 {
-    float3 pos = id;
+    thread1DID += GetThreadOffset(groupID);
+    int x = thread1DID % _nbPointsPerChunk;
+    int y = (thread1DID / _nbPointsPerChunk) % _nbPointsPerChunk;
+    int z = thread1DID / (_nbPointsPerChunk * _nbPointsPerChunk); // = (numthreads * dispatch)^2
+    
+    float3 pos = float3(x, y, z);
+    
     if (pos.x >= _nbPointsPerChunk - 1 || pos.y >= _nbPointsPerChunk - 1 || pos.z >= _nbPointsPerChunk - 1)
     {
         return;
@@ -37,10 +45,11 @@ void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
     int flagIndex = 0;
     float currDensityValues[8];
     
-    for (int i = 0; i < 8; i++)
+    for (int i = 7; i >= 0; i--)
     {
         float3 nextPos = pos + verticesOffsets[i];
-        currDensityValues[i] = _DensityValues[GetIndexFromPos(nextPos.x, nextPos.y, nextPos.z)];
+        int nextPos1D = nextPos.x + (nextPos.y * _nbPointsPerChunk) + (nextPos.z * (_nbPointsPerChunk * _nbPointsPerChunk));
+        currDensityValues[i] = _DensityValues[nextPos1D];
 
         if (currDensityValues[i] < _IsoValue)
             flagIndex |= 1 << i;
@@ -83,32 +92,17 @@ void GenerateMarchingCubes(uint3 id : SV_DispatchThreadID)
         currTriangle.C -= _ChunkAxisSize / 2.0;
         
         _Triangles.Append(currTriangle);
+
     }
 }
 
-[numthreads(8, 8, 8)]
-void Terraforming(uint3 id : SV_DispatchThreadID)
+int GetThreadOffset(uint3 _groupID)
 {
-    float3 pos = id;
+    int offsetPartX = 512 * _groupID.x;
+    int offsetPartY = 512 * _ThreadGroups * _groupID.y;
+    int offsetPartZ = 512 * (_ThreadGroups * _ThreadGroups) * _groupID.z;
 
-    
-    //pos.x = (pos.x / (_nbPointsPerChunk - 1)) * _ChunkSize;
-    //pos.y = (pos.y / (_nbPointsPerChunk - 1)) * _ChunkSize;
-    //pos.z = (pos.z / (_nbPointsPerChunk - 1)) * _ChunkSize;
-    
-    //_ChunkPos.x -= (_ChunkSize / 2.0) -_RadiusTerraforming / 2.0;
-    //_ChunkPos.y -= (_ChunkSize / 2.0) -_RadiusTerraforming / 2.0;
-    //_ChunkPos.z -= (_ChunkSize / 2.0) -_RadiusTerraforming / 2.0;
-    
-    if (distance(_ChunkPos + float3(pos.x - _ChunkAxisSize / 2.0, pos.y - _ChunkAxisSize / 2.0, pos.z - _ChunkAxisSize / 2.0), _HitPos) <= _RadiusTerraforming)
-    {
-        _DensityValues[GetIndexFromPos(pos.x, pos.y, pos.z)] += _TerraformStrength;
-    }
-}
-
-int GetIndexFromPos(int x, int y, int z)
-{
-    return x + _nbPointsPerChunk * (y + _nbPointsPerChunk * z);
+    return offsetPartX + offsetPartY + offsetPartZ;
 }
 
 float3 Interpolation(float3 _cood1, float _density1, float3 _cood2, float _density2)

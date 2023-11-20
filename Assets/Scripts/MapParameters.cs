@@ -5,13 +5,14 @@ using UnityEngine;
 public static class MapParameters
 {
     const int nbThreads = 8;
-    const int chunkAxisSize = 100;
+    const int chunkAxisSize = 1000;
     readonly static Vector3 chunkSize = new Vector3(chunkAxisSize, chunkAxisSize, chunkAxisSize);
     readonly static int[] LODs =
     {
-        8,
-        16,
-        24
+        32,
+        48,
+        56,
+        64
     };
 
     public static int GetLODCount()
@@ -34,7 +35,7 @@ public static class MapParameters
         return LODs[_currentLod];
     }
 
-    public static int ThreadGroups(int _currentLod)
+    public static int ThreadGroupsPerChunk(int _currentLod)
     {
         return LODs[_currentLod] / nbThreads;
     }
@@ -42,11 +43,6 @@ public static class MapParameters
     public enum Directions
     {
         Right, Left, Up, Down, Forward, Back, Count
-    }
-
-    public struct DirectionsOffset
-    {
-        public Vector3Int[] offsets;
     }
 
     public struct Positions
@@ -60,10 +56,14 @@ public static class MapParameters
             world = _world;
         }
 
-        public void Set(Vector3Int _grid, Vector3 _world)
+        public void Set(Vector3Int _grid)
         {
             grid = _grid;
-            world = _world;
+
+            int chunkSizeMax = GetChunkAxisSize();
+            world.Set((grid.x * chunkSizeMax),
+                      (grid.y * chunkSizeMax),
+                      (grid.z * chunkSizeMax));
         }
     }
 }

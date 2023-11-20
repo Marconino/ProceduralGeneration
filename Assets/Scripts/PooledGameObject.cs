@@ -4,10 +4,10 @@ using UnityEngine;
 
 public class PooledGameObject
 {
+    MapParameters.Positions pos;
     MeshFilter filter;
     MeshCollider collider;
     MeshRenderer renderer;
-    MapParameters.Positions pos;
     GameObject go;
     bool isUsed;
 
@@ -24,7 +24,7 @@ public class PooledGameObject
         isUsed = true;
     }
 
-    public void SetCurrentMesh(Mesh _mesh)
+    public void UpdateCurrentMesh(Mesh _mesh)
     {
         filter.sharedMesh = _mesh;
         collider.sharedMesh = _mesh;
@@ -36,6 +36,12 @@ public class PooledGameObject
         go.transform.position = pos.world;
     }
 
+    public void RemoveMesh()
+    {
+        filter.sharedMesh = null;
+        collider.sharedMesh = null;
+    }
+
     public MapParameters.Positions GetPositions()
     {
         return pos;
@@ -45,8 +51,8 @@ public class PooledGameObject
     {
         return isUsed;
     }
-    public void SetState(bool _state)
+    public void SetUsed(bool _isUsed)
     {
-        isUsed = _state;
+        isUsed = _isUsed;
     }
 }

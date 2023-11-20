@@ -2,8 +2,8 @@
 
 #include "FastNoiseLite.hlsl"
 
-int _ChunkSize;
 int _nbPointsPerChunk;
+int _ThreadGroups;
 int _Octaves;
 int _Seed;
 float _Amplitude;
@@ -15,10 +15,10 @@ float _OffsetY;
 float _OffsetZ;
 RWStructuredBuffer<float> _DensityValues;
 
-int GetIndexFromPos(int x, int y, int z);
+int GetThreadOffset(uint3 _groupID);
 
-[numthreads(8,8,8)]
-void GenerateNoise(uint3 id : SV_DispatchThreadID)
+[numthreads(8, 8, 8)]
+void GenerateNoise(uint thread1DID : SV_GroupIndex, uint3 groupID : SV_GroupID)
 {
     fnl_state noise = fnlCreateState(_Seed);
     noise.noise_type = FNL_NOISE_OPENSIMPLEX2;
@@ -27,19 +27,25 @@ void GenerateNoise(uint3 id : SV_DispatchThreadID)
     noise.octaves = _Octaves;
     noise.lacunarity = _Lacunarity;
     //noise.weighted_strength = 0;
-    
-    float3 pos = id;
+      
+    thread1DID += GetThreadOffset(groupID);    
+    int x = thread1DID % _nbPointsPerChunk;
+    int y = (thread1DID / _nbPointsPerChunk) % _nbPointsPerChunk;
+    int z = thread1DID / (_nbPointsPerChunk * _nbPointsPerChunk); //= (numthreads * dispatch)^2
 
-    float ground = -(pos.y + _OffsetY) + (_GroundOffset * _nbPointsPerChunk);
-    //float n = ground + fnlGetNoise3D(noise, pos.x + _OffsetX, pos.y + _OffsetY, pos.z + _OffsetZ) * _Amplitude;
-    //int currIndex = GetIndexFromPos(id.x, id.y, id.z);
-    //_DensityValues[currIndex] = n;
-    
-    _DensityValues[GetIndexFromPos(pos.x, pos.y, pos.z)] = fnlGetNoise3D(noise, pos.x + _OffsetX, pos.y + _OffsetY, pos.z + _OffsetZ) ;
-
+    float3 posNoise = float3(x, y, z);
+     
+    _DensityValues[thread1DID] = fnlGetNoise3D(noise, _OffsetX + posNoise.x, _OffsetY + posNoise.y, _OffsetZ + posNoise.z);
+    //float ground = -(posNoise.y + _OffsetY) + (_GroundOffset * _nbPointsPerChunk);
+    //float n = ground + fnlGetNoise3D(noise, _OffsetX + posNoise.x, _OffsetY + posNoise.y, _OffsetZ + posNoise.z) * _Amplitude;
+    //_DensityValues[thread1DID] = n;
 }
 
-int GetIndexFromPos(int x, int y, int z)
+int GetThreadOffset(uint3 _groupID)
 {
-    return x + _nbPointsPerChunk * (y + _nbPointsPerChunk * z);
+    int offsetPartX = 512 * _groupID.x;
+    int offsetPartY = 512 * _ThreadGroups * _groupID.y;
+    int offsetPartZ = 512 * (_ThreadGroups * _ThreadGroups) * _groupID.z;
+
+    return offsetPartX + offsetPartY + offsetPartZ;
 }

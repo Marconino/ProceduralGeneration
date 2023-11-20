@@ -8,12 +8,12 @@ public class Viewer : MonoBehaviour
     [SerializeField] int viewDistance;
     Vector3Int gridPos;
     Vector3Int lastGridPos;
-    MapParameters.DirectionsOffset[] offsetDirections;
+    Vector3Int[][] offsetsDirections;
 
     private void Start()
     {
         lastGridPos = gridPos = Vector3Int.zero;
-        offsetDirections = new MapParameters.DirectionsOffset[6];
+        offsetsDirections = new Vector3Int[(int)Directions.Count][];
 
         CreateDirectionsOffset();
     }
@@ -22,7 +22,7 @@ public class Viewer : MonoBehaviour
     {
         for (int currDirection = 0; currDirection < (int)Directions.Count; currDirection++)
         {
-            offsetDirections[currDirection].offsets = new Vector3Int[(viewDistance * 2 + 1) * (viewDistance * 2 + 1)];
+            offsetsDirections[currDirection] = new Vector3Int[(viewDistance * 2 + 1) * (viewDistance * 2 + 1)];
             int index = 0;
             int valueNotChanged = currDirection == (int)Directions.Right
                                || currDirection == (int)Directions.Up
@@ -34,15 +34,15 @@ public class Viewer : MonoBehaviour
                 {
                     if (currDirection <= (int)Directions.Left)
                     {
-                        offsetDirections[currDirection].offsets[index] = new Vector3Int(valueNotChanged, i, j);
+                        offsetsDirections[currDirection][index] = new Vector3Int(valueNotChanged, i, j);
                     }
                     else if (currDirection <= (int)Directions.Down)
                     {
-                        offsetDirections[currDirection].offsets[index] = new Vector3Int(-j, valueNotChanged, -i);
+                        offsetsDirections[currDirection][index] = new Vector3Int(-j, valueNotChanged, -i);
                     }
                     else
                     {
-                        offsetDirections[currDirection].offsets[index] = new Vector3Int(j, i, valueNotChanged);
+                        offsetsDirections[currDirection][index] = new Vector3Int(j, i, valueNotChanged);
                     }
                     index++;
                 }
@@ -74,8 +74,8 @@ public class Viewer : MonoBehaviour
     {
         lastGridPos = _lastGridPos;
     }
-    public Vector3Int[] GetOffsetDirection(Directions _direction)
+    public Vector3Int[] GetOffsetsDirection(Directions _direction)
     {
-        return offsetDirections[(int)_direction].offsets;
+        return offsetsDirections[(int)_direction];
     }
 }
