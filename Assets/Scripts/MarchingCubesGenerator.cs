@@ -1,4 +1,3 @@
-using JetBrains.Annotations;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Collections;
@@ -21,8 +20,12 @@ public class MarchingCubesGenerator : MonoBehaviour
         DataCompute<int> trianglesCount;
         DataCompute<float> density;
 
-        public MarchingCubes(int _lod, in NativeArray<float> _densityValues, int _x, int _y, int _z) : base(_lod, _x, _y, _z)
+        //Generator
+        MarchingCubesGenerator generator;
+
+        public MarchingCubes(MarchingCubesGenerator _generator, in NativeArray<float> _densityValues, int _lod, int _x, int _y, int _z) : base(_lod, _x, _y, _z)
         {
+            generator = _generator;
             density.data = _densityValues;
         }
 
@@ -38,13 +41,13 @@ public class MarchingCubesGenerator : MonoBehaviour
             //Count : 5 triangles max per Cube * All cubes per Chunk
             //Size : triangles = 3 vertices, so 3 floats per vertex 
             int allPointsPerChunk = nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk;
-            triangles.computeBuffer = new ComputeBuffer(5 * allPointsPerChunk, sizeof(float) * 3 * 3, ComputeBufferType.Append);
+            triangles.computeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Append, 5 * allPointsPerChunk, sizeof(float) * 3 * 3);
 
             //ComputeBufferType.Raw because it's just a count of triangles
-            trianglesCount.computeBuffer = new ComputeBuffer(1, sizeof(int), ComputeBufferType.Raw);
+            trianglesCount.computeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Raw, 1, sizeof(int));
 
             //DensityValues computed from Noise
-            density.computeBuffer = new ComputeBuffer(allPointsPerChunk, sizeof(float));
+            density.computeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, allPointsPerChunk, sizeof(float));
         }
 
         protected override void ReleaseBuffers()
@@ -56,7 +59,7 @@ public class MarchingCubesGenerator : MonoBehaviour
 
         protected override void StartRequest()
         {
-            ComputeShader marchingCubesShader = instance.marchingCubesShader;
+            ComputeShader marchingCubesShader = generator.marchingCubesShader;
             int kernel = marchingCubesShader.FindKernel("GenerateMarchingCubes");
 
             marchingCubesShader.SetInt("_nbPointsPerChunk", nbPointsPerChunk);
@@ -69,11 +72,12 @@ public class MarchingCubesGenerator : MonoBehaviour
             marchingCubesShader.SetBuffer(kernel, "_Triangles", triangles.computeBuffer);
             triangles.computeBuffer.SetCounterValue(0);
 
-            marchingCubesShader.SetFloat("_IsoValue", instance.isoValue);
+            marchingCubesShader.SetFloat("_IsoValue", generator.isoValue);
 
             marchingCubesShader.Dispatch(kernel, threadGroups, threadGroups, threadGroups);
 
-            ComputeBuffer.CopyCount(triangles.computeBuffer, trianglesCount.computeBuffer, 0);
+            GraphicsBuffer.CopyCount(triangles.computeBuffer, trianglesCount.computeBuffer, 0);
+            //ComputeBuffer.CopyCount(triangles.computeBuffer, trianglesCount.computeBuffer, 0);
 
             AsyncGPUReadback.Request(trianglesCount.computeBuffer, trianglesCount.OnReadbackData);
             AsyncGPUReadback.Request(triangles.computeBuffer, triangles.OnReadbackData);
@@ -83,7 +87,7 @@ public class MarchingCubesGenerator : MonoBehaviour
         {
             int nbTriangles = trianglesCount.data[0];
             NativeArray<Triangle> trianglesValues = triangles.data;
-            
+
             Vector3[] vertices = new Vector3[nbTriangles * 3];
             int[] trianglesIndex = new int[nbTriangles * 3];
             void* ptr = trianglesValues.GetUnsafePtr();
@@ -121,26 +125,19 @@ public class MarchingCubesGenerator : MonoBehaviour
         }
     }
 
-    static MarchingCubesGenerator instance;
-    public static MarchingCubesGenerator Instance { get => instance; }
-
     [Header("MC Parameters")]
     [SerializeField] float isoValue = 0f;
     [SerializeField] ComputeShader marchingCubesShader;
     Queue<MarchingCubes> marchingCubesQueue;
 
-    void Awake()
+    MarchingCubesGenerator()
     {
-        if (instance == null)
-        {
-            instance = this;
-            marchingCubesQueue = new Queue<MarchingCubes>();
-        }
+        marchingCubesQueue = new Queue<MarchingCubes>();
     }
 
-    public MarchingCubes CreateMCInstance(int _lod, in NativeArray<float> _densityValues, int _x, int _y, int _z)
+    public MarchingCubes CreateMCInstance(in NativeArray<float> _densityValues, int _lod, int _x, int _y, int _z)
     {
-        MarchingCubes marchingCubes = new MarchingCubes(_lod, _densityValues, _x, _y, _z);
+        MarchingCubes marchingCubes = new MarchingCubes(this, _densityValues, _lod, _x, _y, _z);
         marchingCubesQueue.Enqueue(marchingCubes);
         return marchingCubes;
     }
@@ -153,5 +150,10 @@ public class MarchingCubesGenerator : MonoBehaviour
     public bool HasAComputedMC()
     {
         return marchingCubesQueue.Count > 0 && marchingCubesQueue.Peek().IsComputed();
+    }
+
+    public void ClearOldMC()
+    {
+        marchingCubesQueue.Clear();
     }
 }

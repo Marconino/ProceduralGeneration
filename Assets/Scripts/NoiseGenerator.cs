@@ -1,8 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Threading.Tasks;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -14,9 +12,13 @@ public class NoiseGenerator : MonoBehaviour
         DataCompute<float> density;
         int xOffset, yOffset, zOffset;
 
-        public Noise(int _lod, int _x, int _y, int _z) : base(_lod, _x, _y, _z)
+        //Generator
+        NoiseGenerator generator;
+
+        public Noise(NoiseGenerator _generator, int _lod, int _x, int _y, int _z) : base(_lod, _x, _y, _z)
         {
-            xOffset = gridPosX * (nbPointsPerChunk - 1); 
+            generator = _generator;
+            xOffset = gridPosX * (nbPointsPerChunk - 1);
             yOffset = gridPosY * (nbPointsPerChunk - 1);
             zOffset = gridPosZ * (nbPointsPerChunk - 1);
         }
@@ -29,7 +31,7 @@ public class NoiseGenerator : MonoBehaviour
         protected override void InitBuffers()
         {
             int allPointsPerChunk = nbPointsPerChunk * nbPointsPerChunk * nbPointsPerChunk;
-            density.computeBuffer = new ComputeBuffer(allPointsPerChunk, sizeof(float));
+            density.computeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, allPointsPerChunk, sizeof(float));
         }
 
         protected override void ReleaseBuffers()
@@ -39,22 +41,23 @@ public class NoiseGenerator : MonoBehaviour
 
         protected override void StartRequest()
         {
-            ComputeShader noiseShader = instance.noiseShader;
+            ComputeShader noiseShader = generator.noiseShader;
             int kernel = noiseShader.FindKernel("GenerateNoise");
 
             noiseShader.SetBuffer(kernel, "_DensityValues", density.computeBuffer);
 
             noiseShader.SetInt("_nbPointsPerChunk", nbPointsPerChunk);
             noiseShader.SetInt("_ThreadGroups", threadGroups);
-            noiseShader.SetInt("_Octaves", instance.octaves);
-            noiseShader.SetInt("_Seed", instance.seed);
-            noiseShader.SetFloat("_Amplitude", instance.amplitude);
-            noiseShader.SetFloat("_Frequency", instance.frequency);
-            noiseShader.SetFloat("_Lacunarity", instance.lacunarity);
-            noiseShader.SetFloat("_GroundOffset", instance.groundOffset);
+            noiseShader.SetInt("_Octaves", generator.octaves);
+            noiseShader.SetInt("_Seed", generator.seed);
+            noiseShader.SetFloat("_Amplitude", generator.amplitude);
+            noiseShader.SetFloat("_Frequency", generator.frequency);
+            noiseShader.SetFloat("_Lacunarity", generator.lacunarity);
+            noiseShader.SetFloat("_GroundOffset", generator.groundOffset);
             noiseShader.SetFloat("_OffsetX", xOffset);
             noiseShader.SetFloat("_OffsetY", yOffset);
             noiseShader.SetFloat("_OffsetZ", zOffset);
+            noiseShader.SetFloat("_Scale", generator.scale);
 
             noiseShader.Dispatch(kernel, threadGroups, threadGroups, threadGroups);
 
@@ -77,9 +80,6 @@ public class NoiseGenerator : MonoBehaviour
         }
     }
 
-    static NoiseGenerator instance;
-    public static NoiseGenerator Instance { get => instance; }
-
     [Header("Noise Parameters")]
     [SerializeField] ComputeShader noiseShader;
     [SerializeField] int seed;
@@ -88,20 +88,22 @@ public class NoiseGenerator : MonoBehaviour
     [SerializeField] float frequency = 0.005f;
     [SerializeField] float lacunarity = 2f;
     [SerializeField] float groundOffset = 0.2f;
+    [SerializeField] float scale = 0.3f;
     Queue<Noise> noises;
 
-    void Awake()
+    NoiseGenerator()
     {
-        if (instance == null)
-        {
-            instance = this;
-            noises = new Queue<Noise>();
-        }
+        noises = new Queue<Noise>();
+    }
+
+    private void Update()
+    {
+        //Debug.Log("Noises count : " + noises.Count);
     }
 
     public Noise CreateNoiseInstance(int _lod, int _x, int _y, int _z)
     {
-        Noise noiseInstance = new Noise(_lod, _x, _y, _z);
+        Noise noiseInstance = new Noise(this, _lod, _x, _y, _z);
         noises.Enqueue(noiseInstance);
         return noiseInstance;
     }
@@ -114,5 +116,15 @@ public class NoiseGenerator : MonoBehaviour
     public bool HasAComputedNoise()
     {
         return noises.Count > 0 && noises.Peek().IsComputed();
+    }
+
+    public bool HasNoises()
+    {
+        return noises.Count > 0;
+    }
+
+    public void ClearOldNoises()
+    {
+        noises.Clear();
     }
 }

@@ -1,5 +1,4 @@
 #pragma kernel GenerateMarchingCubes
-#pragma kernel Terraforming
 
 #include "MarchingCubesTable.hlsl"
 
@@ -51,7 +50,7 @@ void GenerateMarchingCubes(uint thread1DID : SV_GroupIndex, uint3 groupID : SV_G
         int nextPos1D = nextPos.x + (nextPos.y * _nbPointsPerChunk) + (nextPos.z * (_nbPointsPerChunk * _nbPointsPerChunk));
         currDensityValues[i] = _DensityValues[nextPos1D];
 
-        if (currDensityValues[i] < _IsoValue)
+        if (currDensityValues[i] > _IsoValue)
             flagIndex |= 1 << i;
     }
 

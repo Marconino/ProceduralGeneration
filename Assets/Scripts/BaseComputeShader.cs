@@ -5,16 +5,16 @@ using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public abstract class BaseComputeShader<T>
+public abstract class BaseComputeShader<TResult>
 {
-    public class DataCompute<U> where U : struct
+    public class DataCompute<TValue> where TValue : struct
     {
-        public ComputeBuffer computeBuffer;
-        public NativeArray<U> data;
+        public GraphicsBuffer computeBuffer;
+        public NativeArray<TValue> data;
 
         public void OnReadbackData(AsyncGPUReadbackRequest _request)
         {
-            data = new NativeArray<U>(_request.GetData<U>(), Allocator.Persistent);
+            data = new NativeArray<TValue>(_request.GetData<TValue>(), Allocator.Persistent);
         }
     }
 
@@ -38,7 +38,7 @@ public abstract class BaseComputeShader<T>
     protected abstract void InitBuffers();
     protected abstract void ReleaseBuffers();
     protected abstract void StartRequest();
-    public abstract T GetComputeAsync();
+    public abstract TResult GetComputeAsync();
 
     public abstract bool IsComputed();
     public abstract void DisposeData();

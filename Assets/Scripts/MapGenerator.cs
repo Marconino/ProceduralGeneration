@@ -5,6 +5,7 @@ using System.Linq;
 using Unity.Collections;
 using UnityEngine;
 
+[ExecuteAlways]
 public class MapGenerator : MonoBehaviour
 {
     [SerializeField] Viewer viewer;
@@ -18,25 +19,64 @@ public class MapGenerator : MonoBehaviour
     List<MapParameters.Directions> currDirections;
 
     [SerializeField] int resolution;
+    RenderParams renderParams;
+
+    NoiseGenerator noiseGenerator;
+    MarchingCubesGenerator marchingCubesGenerator;
 
     void Start()
     {
-        Init();
-        GenerateSpawn();
+        Generate();
     }
 
     void Update()
     {
         if (DidPlayerMoved(viewer))
         {
+            if (noiseGenerator.HasNoises())
+            {
+                noiseGenerator.ClearOldNoises();
+                marchingCubesGenerator.ClearOldMC();
+            }
+
             GetPlayerDirections();
             Pooling();
         }
 
-        if (NoiseGenerator.Instance.HasAComputedNoise())
+        if (noiseGenerator.HasAComputedNoise())
             StartMCComputeFromNoise();
-        if (MarchingCubesGenerator.Instance.HasAComputedMC())
+        if (marchingCubesGenerator.HasAComputedMC())
             UpdateMeshFromMC();
+
+        //foreach (var chunk in chunks.Values)
+        //{
+        //    if (chunk.GetCurrentMesh() != null)
+        //    {          
+        //        Matrix4x4 matrix4X4 = Matrix4x4.TRS(chunk.GetPos().world, Quaternion.identity, Vector3.one);
+        //        Graphics.RenderMesh(renderParams, chunk.GetCurrentMesh(), 0, matrix4X4);
+        //    }
+        //}
+    }
+
+    public void Generate()
+    {
+        noiseGenerator = GetComponent<NoiseGenerator>();
+        marchingCubesGenerator = GetComponent<MarchingCubesGenerator>();
+
+        Init();
+        GenerateSpawn();
+
+        renderParams = new RenderParams(meshMaterial);
+    }
+
+    public NoiseGenerator GetNoiseGenerator() 
+    { 
+        return noiseGenerator; 
+    }
+
+    public MarchingCubesGenerator GetMarchingCubesGenerator()
+    {
+        return marchingCubesGenerator;
     }
 
     void Init()
@@ -102,30 +142,33 @@ public class MapGenerator : MonoBehaviour
 
     void StartMCComputeFromNoise()
     {
-        NoiseGenerator.Noise noiseComputed = NoiseGenerator.Instance.DequeueNoiseComputed();
+        NoiseGenerator.Noise noiseComputed = noiseGenerator.DequeueNoiseComputed();
         Vector3Int noisePos = noiseComputed.GetGridPos();
 
         NativeArray<float> densityValues = noiseComputed.GetComputeAsync();
-        MarchingCubesGenerator.MarchingCubes marchingCubes = MarchingCubesGenerator.Instance.CreateMCInstance(resolution, densityValues, noisePos.x, noisePos.y, noisePos.z);
+        MarchingCubesGenerator.MarchingCubes marchingCubes = marchingCubesGenerator.CreateMCInstance(densityValues, resolution, noisePos.x, noisePos.y, noisePos.z);
         marchingCubes.StartComputeAsync();
         noiseComputed.DisposeData();
-
     }
 
     void UpdateMeshFromMC()
     {
-        MarchingCubesGenerator.MarchingCubes marchingCubesComputed = MarchingCubesGenerator.Instance.DequeueMCComputed();
+        MarchingCubesGenerator.MarchingCubes marchingCubesComputed = marchingCubesGenerator.DequeueMCComputed();
 
-        PooledGameObject pooledGameObject = pooledGameObjects.First(g => g.GetPositions().grid == marchingCubesComputed.GetGridPos());
+        PooledGameObject pooledGameObject = pooledGameObjects.FirstOrDefault(g => g.GetPositions().grid == marchingCubesComputed.GetGridPos());
 
-        Chunk chunk;
-        chunks.TryGetValue(pooledGameObject.GetPositions(), out chunk);
+        if (pooledGameObject != null)
+        {
+            Chunk chunk;
+            chunks.TryGetValue(pooledGameObject.GetPositions(), out chunk);
 
-        Mesh mesh = marchingCubesComputed.GetComputeAsync();
-        marchingCubesComputed.DisposeData();
+            Mesh mesh = marchingCubesComputed.GetComputeAsync();
+            marchingCubesComputed.DisposeData();
 
-        chunk.SetCurrentMesh(mesh);
-        pooledGameObject.UpdateCurrentMesh(mesh);
+            chunk.SetPos(pooledGameObject.GetPositions());
+            chunk.SetCurrentMesh(mesh);
+            pooledGameObject.UpdateCurrentMesh(mesh);
+        }
     }
 
     void Clean(MapParameters.Directions _direction)
@@ -140,8 +183,8 @@ public class MapGenerator : MonoBehaviour
 
             currChunkPos.Set(currChunkGridPos);
 
-            PooledGameObject pooledGameObject = pooledGameObjects.First(g => g.GetPositions().grid == currChunkGridPos);
-            pooledGameObject.SetUsed(false);
+            PooledGameObject pooledGameObject = pooledGameObjects.FirstOrDefault(g => g.GetPositions().grid == currChunkGridPos);
+            pooledGameObject?.SetUsed(false);
         }
     }
 
@@ -158,17 +201,22 @@ public class MapGenerator : MonoBehaviour
             currChunkPos.Set(currChunkGridPos);
 
 
-            PooledGameObject pooledGameObject = pooledGameObjects.First(g => !g.GetState());
-            pooledGameObject.SetUsed(true);
-            pooledGameObject.SetPositions(currChunkPos);
-            pooledGameObject.RemoveMesh();
+            PooledGameObject pooledGameObject = pooledGameObjects.FirstOrDefault(g => !g.GetState());
+
+            if (pooledGameObject != null)
+            {
+                pooledGameObject.SetUsed(true);
+                pooledGameObject.SetPositions(currChunkPos);
+                pooledGameObject.RemoveMesh();
+            }
+
 
             Chunk chunk;
             bool hasChunk = chunks.TryGetValue(currChunkPos, out chunk);
 
-            if (hasChunk)
+            if (hasChunk && chunk.GetCurrentMesh())
             {
-                pooledGameObject.UpdateCurrentMesh(chunk.GetCurrentMesh());
+                pooledGameObject?.UpdateCurrentMesh(chunk.GetCurrentMesh());
             }
             else
             {
@@ -179,7 +227,7 @@ public class MapGenerator : MonoBehaviour
 
     void GetPlayerDirections()
     {
-       Vector3Int currMovement = viewer.GetCurrentGridPosition() - viewer.GetLastGridPosition();
+        Vector3Int currMovement = viewer.GetCurrentGridPosition() - viewer.GetLastGridPosition();
 
         for (int i = 0; i < 3; i++)
         {
@@ -196,10 +244,17 @@ public class MapGenerator : MonoBehaviour
 
     Chunk AddChunk(MapParameters.Positions _chunkPos, int _lod)
     {
-        Chunk chunk = new Chunk();
-        chunks.Add(_chunkPos, chunk);
+        Chunk chunk = null;
 
-        NoiseGenerator.Noise noiseInstance = NoiseGenerator.Instance.CreateNoiseInstance(_lod, _chunkPos.grid.x, _chunkPos.grid.y, _chunkPos.grid.z);
+        if (chunks.ContainsKey(_chunkPos))
+            chunks.TryGetValue(_chunkPos, out chunk);
+        else
+        {
+            chunk = new Chunk();
+            chunks.Add(_chunkPos, chunk);
+        }
+
+        NoiseGenerator.Noise noiseInstance = noiseGenerator.CreateNoiseInstance(_lod, _chunkPos.grid.x, _chunkPos.grid.y, _chunkPos.grid.z);
         noiseInstance.StartComputeAsync();
 
         return chunk;
