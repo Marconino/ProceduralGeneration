@@ -471,3 +471,4 @@ MonoBehaviour:
   viewer: {fileID: 21587750}
   meshMaterial: {fileID: 2100000, guid: dc43a9699f5386543b86a37cdb32d29d, type: 2}
   resolution: 1
+  updateInEditor: 0

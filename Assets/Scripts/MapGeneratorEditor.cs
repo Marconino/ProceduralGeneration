@@ -18,6 +18,7 @@ public class MapGeneratorEditor : Editor
             if (mapGenerator.transform.childCount > 0)
                 DeleteChildren(mapGenerator);
 
+            mapGenerator.updateInEditor = true;
             mapGenerator.Generate();
         }
 
@@ -29,6 +30,7 @@ public class MapGeneratorEditor : Editor
 
     void DeleteChildren(MapGenerator _mapGenerator)
     {
+        _mapGenerator.updateInEditor = false;
         _mapGenerator.GetNoiseGenerator().ClearOldNoises();
         _mapGenerator.GetMarchingCubesGenerator().ClearOldMC();
 

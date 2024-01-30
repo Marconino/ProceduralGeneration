@@ -24,38 +24,47 @@ public class MapGenerator : MonoBehaviour
     NoiseGenerator noiseGenerator;
     MarchingCubesGenerator marchingCubesGenerator;
 
+
+    [HideInInspector] public bool updateInEditor = false;
+
     void Start()
     {
-        Generate();
+        if (Application.isPlaying)
+        {
+            Generate();
+        }
     }
 
     void Update()
     {
-        if (DidPlayerMoved(viewer))
+        if (Application.isPlaying || updateInEditor)
         {
-            if (noiseGenerator.HasNoises())
+            if (DidPlayerMoved(viewer))
             {
-                noiseGenerator.ClearOldNoises();
-                marchingCubesGenerator.ClearOldMC();
+                if (noiseGenerator.HasNoises())
+                {
+                    noiseGenerator.ClearOldNoises();
+                    marchingCubesGenerator.ClearOldMC();
+                }
+
+                GetPlayerDirections();
+                Pooling();
             }
 
-            GetPlayerDirections();
-            Pooling();
+            if (noiseGenerator.HasAComputedNoise())
+                StartMCComputeFromNoise();
+            if (marchingCubesGenerator.HasAComputedMC())
+                UpdateMeshFromMC();
+
+            //foreach (var chunk in chunks.Values)
+            //{
+            //    if (chunk.GetCurrentMesh() != null)
+            //    {          
+            //        Matrix4x4 matrix4X4 = Matrix4x4.TRS(chunk.GetPos().world, Quaternion.identity, Vector3.one);
+            //        Graphics.RenderMesh(renderParams, chunk.GetCurrentMesh(), 0, matrix4X4);
+            //    }
+            //}
         }
-
-        if (noiseGenerator.HasAComputedNoise())
-            StartMCComputeFromNoise();
-        if (marchingCubesGenerator.HasAComputedMC())
-            UpdateMeshFromMC();
-
-        //foreach (var chunk in chunks.Values)
-        //{
-        //    if (chunk.GetCurrentMesh() != null)
-        //    {          
-        //        Matrix4x4 matrix4X4 = Matrix4x4.TRS(chunk.GetPos().world, Quaternion.identity, Vector3.one);
-        //        Graphics.RenderMesh(renderParams, chunk.GetCurrentMesh(), 0, matrix4X4);
-        //    }
-        //}
     }
 
     public void Generate()
