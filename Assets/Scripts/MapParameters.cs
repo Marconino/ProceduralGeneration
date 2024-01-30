@@ -9,10 +9,10 @@ public static class MapParameters
     readonly static Vector3 chunkSize = new Vector3(chunkAxisSize, chunkAxisSize, chunkAxisSize);
     readonly static int[] LODs =
     {
-        32,
-        48,
-        56,
-        64
+        8,
+        16,
+        24,
+        32
     };
 
     public static int GetLODCount()

@@ -18,7 +18,7 @@ public class MapGenerator : MonoBehaviour
     MapParameters.Positions currChunkPos;
     List<MapParameters.Directions> currDirections;
 
-    [SerializeField] int resolution;
+    [SerializeField] [Range(0, 3)] int resolution;
     RenderParams renderParams;
 
     NoiseGenerator noiseGenerator;
