@@ -11,7 +11,7 @@ public class PooledGameObject
     GameObject go;
     bool isUsed;
 
-    public PooledGameObject(GameObject _go, MapParameters.Positions _pos, MeshFilter _filter, MeshCollider _collider, MeshRenderer _renderer , Transform _parent)
+    public PooledGameObject(GameObject _go, MapParameters.Positions _pos, MeshFilter _filter, MeshCollider _collider, MeshRenderer _renderer, Transform _parent)
     {
         go = _go;
         pos = _pos;
@@ -21,13 +21,22 @@ public class PooledGameObject
 
         go.transform.SetParent(_parent);
         go.transform.position = pos.world;
+
         isUsed = true;
     }
 
     public void UpdateCurrentMesh(Mesh _mesh)
     {
         filter.sharedMesh = _mesh;
-        collider.sharedMesh = _mesh;
+        try
+        {
+            collider.sharedMesh = _mesh;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogException(e);
+            throw ;
+        }
     }
 
     public void SetPositions(MapParameters.Positions _pos)
@@ -47,12 +56,18 @@ public class PooledGameObject
         return pos;
     }
 
-    public bool GetState()
-    {
-        return isUsed;
-    }
     public void SetUsed(bool _isUsed)
     {
         isUsed = _isUsed;
+    }
+
+    public bool IsUsed()
+    {
+        return isUsed;
+    }
+
+    public void SetActiveGameObject(bool _state)
+    {
+        go.SetActive(_state);
     }
 }

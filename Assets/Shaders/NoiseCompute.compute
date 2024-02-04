@@ -27,8 +27,7 @@ void GenerateNoise(uint thread1DID : SV_GroupIndex, uint3 groupID : SV_GroupID)
     noise.frequency = _Frequency;
     noise.octaves = _Octaves;
     noise.lacunarity = _Lacunarity;
-    //noise.weighted_strength = 0;
-      
+    
     thread1DID += GetThreadOffset(groupID);    
     int x = thread1DID % _nbPointsPerChunk;
     int y = (thread1DID / _nbPointsPerChunk) % _nbPointsPerChunk;
@@ -36,8 +35,9 @@ void GenerateNoise(uint thread1DID : SV_GroupIndex, uint3 groupID : SV_GroupID)
 
     float3 posNoise = float3(x, y, z);
     float3 sample = float3((_OffsetX + posNoise.x) * _Scale, (_OffsetY + posNoise.y) * _Scale, (_OffsetZ + posNoise.z) * _Scale);
-    
-    _DensityValues[thread1DID] = (fnlGetNoise3D(noise, sample.x, sample.y, sample.z) + 1) / 2;
+    float noiseValue = (fnlGetNoise3D(noise, sample.x, sample.y, sample.z) + 1) / 2;
+
+    _DensityValues[thread1DID] = noiseValue;
     //float ground = -(posNoise.y + _OffsetY) + (_GroundOffset * _nbPointsPerChunk);
     //float n = ground + fnlGetNoise3D(noise, _OffsetX + posNoise.x, _OffsetY + posNoise.y, _OffsetZ + posNoise.z) * _Amplitude;
     //_DensityValues[thread1DID] = n;

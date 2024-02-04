@@ -4,16 +4,9 @@ using UnityEngine;
 
 public class Chunk
 {
-    Mesh mesh;
     MapParameters.Positions pos;
-    public Mesh GetCurrentMesh()
-    {
-        return mesh;
-    }   
-    public void SetCurrentMesh(Mesh _mesh)
-    {
-        mesh = _mesh;
-    }
+    Mesh cachedMesh;
+    PooledGameObject currentPooledGO;
     
     public void SetPos(MapParameters.Positions _pos)
     {
@@ -22,5 +15,30 @@ public class Chunk
     public MapParameters.Positions GetPos()
     {
         return pos;
+    }
+
+    public void SetCachedMesh(Mesh _mesh)
+    {
+        cachedMesh = _mesh;
+    }
+
+    public Mesh GetCachedMesh()
+    {
+        return cachedMesh;
+    }
+
+    public bool HasCachedMesh()
+    {
+        return cachedMesh != null;
+    }
+
+    public void SetCurrentPooledGameObject(PooledGameObject _currentPooledGO)
+    {
+        currentPooledGO = _currentPooledGO;
+    }
+
+    public PooledGameObject GetCurrentPooledGameObject()
+    {
+        return currentPooledGO;
     }
 }

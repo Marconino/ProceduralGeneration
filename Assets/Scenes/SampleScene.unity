@@ -293,7 +293,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c06cebe68b2d479458520188567c2e96, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  viewDistance: 5
+  viewDistance: 10
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
@@ -435,12 +435,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   noiseShader: {fileID: 7200000, guid: 5d670f2d37fb35948acc986497aeff3e, type: 3}
-  seed: 1236
+  concurrentComputing: 10
+  seed: 1250
   octaves: 5
-  amplitude: 1.15
+  amplitude: 154
   frequency: 0.005
   lacunarity: 2
-  groundOffset: 0.1
+  groundOffset: 1.29
   scale: 0.225
 --- !u!114 &1347265180
 MonoBehaviour:
@@ -454,8 +455,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 617b61d9227088743972e4123d430887, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  isoValue: 0.5
   marchingCubesShader: {fileID: 7200000, guid: 8cdf969adf4739d4a8edb691e5fa2f39, type: 3}
+  concurrentComputing: 10
+  isoValue: 0.5
 --- !u!114 &1347265181
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -20,7 +20,7 @@ public abstract class BaseComputeShader<TResult>
 
     protected int nbPointsPerChunk;
     protected int threadGroups;
-    protected int gridPosX, gridPosY, gridPosZ;
+    protected MapParameters.Positions pos;
 
     public BaseComputeShader(int _lod, int _x, int _y, int _z)
     {
@@ -28,10 +28,7 @@ public abstract class BaseComputeShader<TResult>
 
         nbPointsPerChunk = MapParameters.GetPointsPerChunk(_lod);
         threadGroups = MapParameters.ThreadGroupsPerChunk(_lod);
-
-        gridPosX = _x;
-        gridPosY = _y;
-        gridPosZ = _z;
+        pos.Set(new Vector3Int(_x, _y, _z));
     }
 
     protected abstract void CreateDataCompute();
@@ -50,8 +47,8 @@ public abstract class BaseComputeShader<TResult>
         ReleaseBuffers();
     }
 
-    public Vector3Int GetGridPos()
+    public MapParameters.Positions GetPos()
     {
-        return new Vector3Int(gridPosX, gridPosY, gridPosZ);
+        return pos;
     }
 }

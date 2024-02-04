@@ -18,9 +18,9 @@ public class NoiseGenerator : MonoBehaviour
         public Noise(NoiseGenerator _generator, int _lod, int _x, int _y, int _z) : base(_lod, _x, _y, _z)
         {
             generator = _generator;
-            xOffset = gridPosX * (nbPointsPerChunk - 1);
-            yOffset = gridPosY * (nbPointsPerChunk - 1);
-            zOffset = gridPosZ * (nbPointsPerChunk - 1);
+            xOffset = pos.grid.x * (nbPointsPerChunk - 1);
+            yOffset = pos.grid.y * (nbPointsPerChunk - 1);
+            zOffset = pos.grid.z * (nbPointsPerChunk - 1);
         }
 
         protected override void CreateDataCompute()
@@ -45,7 +45,7 @@ public class NoiseGenerator : MonoBehaviour
             int kernel = noiseShader.FindKernel("GenerateNoise");
 
             noiseShader.SetBuffer(kernel, "_DensityValues", density.computeBuffer);
-
+     
             noiseShader.SetInt("_nbPointsPerChunk", nbPointsPerChunk);
             noiseShader.SetInt("_ThreadGroups", threadGroups);
             noiseShader.SetInt("_Octaves", generator.octaves);
@@ -80,8 +80,11 @@ public class NoiseGenerator : MonoBehaviour
         }
     }
 
-    [Header("Noise Parameters")]
+    [Header("Computing Parameters")]
     [SerializeField] ComputeShader noiseShader;
+    [SerializeField] int concurrentComputing = 5;
+
+    [Header("Noise Parameters")]
     [SerializeField] int seed;
     [SerializeField, Min(1)] int octaves = 1;
     [SerializeField] float amplitude = 5f;
@@ -89,33 +92,39 @@ public class NoiseGenerator : MonoBehaviour
     [SerializeField] float lacunarity = 2f;
     [SerializeField] float groundOffset = 0.2f;
     [SerializeField] float scale = 0.3f;
-    Queue<Noise> noises;
+    List<Noise> noises;
 
     NoiseGenerator()
     {
-        noises = new Queue<Noise>();
-    }
-
-    private void Update()
-    {
-        //Debug.Log("Noises count : " + noises.Count);
+        noises = new List<Noise>();
     }
 
     public Noise CreateNoiseInstance(int _lod, int _x, int _y, int _z)
     {
         Noise noiseInstance = new Noise(this, _lod, _x, _y, _z);
-        noises.Enqueue(noiseInstance);
+        noises.Add(noiseInstance);
         return noiseInstance;
     }
 
     public Noise DequeueNoiseComputed()
     {
-        return noises.Dequeue();
+        Noise noise = noises[0];
+        noises.Remove(noise);
+        return noise;
+    }   
+    
+    public Noise[] DequeueNoisesComputed()
+    {
+        int limit = noises.Count > concurrentComputing ? concurrentComputing : noises.Count;
+        Noise[] noisesReturn = new Noise[limit];
+        noises.CopyTo(0, noisesReturn, 0, limit);      
+        noises.RemoveRange(0,  limit);
+        return noisesReturn;
     }
 
     public bool HasAComputedNoise()
     {
-        return noises.Count > 0 && noises.Peek().IsComputed();
+        return noises.Count > 0 && noises[0].IsComputed();
     }
 
     public bool HasNoises()
@@ -125,6 +134,10 @@ public class NoiseGenerator : MonoBehaviour
 
     public void ClearOldNoises()
     {
+        for (int i = 0; i < noises.Count; i++)
+        {
+            noises[i].DisposeData();
+        }
         noises.Clear();
     }
 }

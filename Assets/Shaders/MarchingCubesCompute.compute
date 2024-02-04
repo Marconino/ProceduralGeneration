@@ -14,13 +14,7 @@ int _ThreadGroups;
 float _IsoValue;
 RWStructuredBuffer<float> _DensityValues;
 AppendStructuredBuffer<Triangle> _Triangles;
-
-float3 _HitPos;
-float _RadiusTerraforming;
-float _TerraformStrength;
-float3 _ChunkPos;
 int _ChunkAxisSize;
-
 float3 GetVerticesOffset(int i);
 float3 Interpolation(float3 _cood1, float _density1, float3 _cood2, float _density2);
 
@@ -69,22 +63,22 @@ void GenerateMarchingCubes(uint thread1DID : SV_GroupIndex, uint3 groupID : SV_G
 
         Triangle currTriangle;
         
-        //currTriangle.A = Interpolation(verticesOffsets[firstEdgeVertex0] + pos, currDensityValues[firstEdgeVertex0],
-        //                               verticesOffsets[firstEdgeVertex1] + pos, currDensityValues[firstEdgeVertex1]);
-        //currTriangle.B = Interpolation(verticesOffsets[secondEdgeVertex0] + pos, currDensityValues[secondEdgeVertex0],
-        //                               verticesOffsets[secondEdgeVertex1] + pos, currDensityValues[secondEdgeVertex1]);
-        //currTriangle.C = Interpolation(verticesOffsets[thirdEdgeVertex0] + pos, currDensityValues[thirdEdgeVertex0],
-        //                               verticesOffsets[thirdEdgeVertex1] + pos, currDensityValues[thirdEdgeVertex1]);
+        currTriangle.A = Interpolation(verticesOffsets[firstEdgeVertex0] + pos, currDensityValues[firstEdgeVertex0],
+                                       verticesOffsets[firstEdgeVertex1] + pos, currDensityValues[firstEdgeVertex1]);
+        currTriangle.B = Interpolation(verticesOffsets[secondEdgeVertex0] + pos, currDensityValues[secondEdgeVertex0],
+                                       verticesOffsets[secondEdgeVertex1] + pos, currDensityValues[secondEdgeVertex1]);
+        currTriangle.C = Interpolation(verticesOffsets[thirdEdgeVertex0] + pos, currDensityValues[thirdEdgeVertex0],
+                                       verticesOffsets[thirdEdgeVertex1] + pos, currDensityValues[thirdEdgeVertex1]);
 
-        currTriangle.A = ((verticesOffsets[firstEdgeVertex0] + verticesOffsets[firstEdgeVertex1]) / 2) + pos;
-        currTriangle.B = ((verticesOffsets[secondEdgeVertex0] + verticesOffsets[secondEdgeVertex1]) / 2) + pos;
-        currTriangle.C = ((verticesOffsets[thirdEdgeVertex0] + verticesOffsets[thirdEdgeVertex1]) / 2) + pos;
+        //currTriangle.A = ((verticesOffsets[firstEdgeVertex0] + verticesOffsets[firstEdgeVertex1]) / 2) + pos;
+        //currTriangle.B = ((verticesOffsets[secondEdgeVertex0] + verticesOffsets[secondEdgeVertex1]) / 2) + pos;
+        //currTriangle.C = ((verticesOffsets[thirdEdgeVertex0] + verticesOffsets[thirdEdgeVertex1]) / 2) + pos;
         
         //Scaling   
         currTriangle.A = (currTriangle.A / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
         currTriangle.B = (currTriangle.B / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
         currTriangle.C = (currTriangle.C / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
-        
+                
         //Centering
         currTriangle.A -= _ChunkAxisSize / 2.0;
         currTriangle.B -= _ChunkAxisSize / 2.0;
@@ -104,8 +98,15 @@ int GetThreadOffset(uint3 _groupID)
     return offsetPartX + offsetPartY + offsetPartZ;
 }
 
-float3 Interpolation(float3 _cood1, float _density1, float3 _cood2, float _density2)
+float3 Interpolation(float3 _coord1, float _density1, float3 _coord2, float _density2)
 {
-    float t = _IsoValue - _density1 / (_density2 - _density1);
-    return _cood1 + t * (_cood2 - _cood1);
+    if (abs(_density2 - _density1) < 0.00001)
+        return _coord1;
+    
+    float isoValueDifference = _IsoValue - _density1;
+    if (abs(isoValueDifference) < 0.00001)
+        isoValueDifference = 0.00001;
+    
+    float t = isoValueDifference / (_density2 - _density1);
+    return _coord1 + t * (_coord2 - _coord1);
 }

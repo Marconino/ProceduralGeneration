@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using Unity.Collections;
 using UnityEngine;
 
@@ -11,24 +10,27 @@ public class MapGenerator : MonoBehaviour
     [SerializeField] Viewer viewer;
     [SerializeField] Material meshMaterial;
     Dictionary<MapParameters.Positions, Chunk> chunks;
+
     PooledGameObject[] pooledGameObjects;
+    Queue<PooledGameObject> unusedGO;
 
     //Cached variables
     Vector3Int currChunkGridPos;
     MapParameters.Positions currChunkPos;
     List<MapParameters.Directions> currDirections;
 
-    [SerializeField] [Range(0, 3)] int resolution;
+    [SerializeField][Range(0, 3)] int resolution;
     RenderParams renderParams;
 
     NoiseGenerator noiseGenerator;
     MarchingCubesGenerator marchingCubesGenerator;
 
-
     [HideInInspector] public bool updateInEditor = false;
 
     void Start()
     {
+        Application.quitting += OnApplicationQuitting;
+
         if (Application.isPlaying)
         {
             Generate();
@@ -46,9 +48,6 @@ public class MapGenerator : MonoBehaviour
                     noiseGenerator.ClearOldNoises();
                     marchingCubesGenerator.ClearOldMC();
                 }
-
-                GetPlayerDirections();
-                Pooling();
             }
 
             if (noiseGenerator.HasAComputedNoise())
@@ -78,9 +77,9 @@ public class MapGenerator : MonoBehaviour
         renderParams = new RenderParams(meshMaterial);
     }
 
-    public NoiseGenerator GetNoiseGenerator() 
-    { 
-        return noiseGenerator; 
+    public NoiseGenerator GetNoiseGenerator()
+    {
+        return noiseGenerator;
     }
 
     public MarchingCubesGenerator GetMarchingCubesGenerator()
@@ -96,6 +95,8 @@ public class MapGenerator : MonoBehaviour
 
         int nbGOPerAxis = viewer.GetViewDistance() * 2 + 1;
         pooledGameObjects = new PooledGameObject[nbGOPerAxis * nbGOPerAxis * nbGOPerAxis];
+
+        unusedGO = new Queue<PooledGameObject>();
     }
 
     void GenerateSpawn()
@@ -120,7 +121,7 @@ public class MapGenerator : MonoBehaviour
 
                     PooledGameObject pooledGameObject = new PooledGameObject(go, currChunkPos, filter, collider, renderer, transform);
                     pooledGameObjects[goCount++] = pooledGameObject;
-                    AddChunk(currChunkPos, resolution);
+                    AddChunk(pooledGameObject, currChunkPos, resolution);
                 }
             }
         }
@@ -151,31 +152,31 @@ public class MapGenerator : MonoBehaviour
 
     void StartMCComputeFromNoise()
     {
-        NoiseGenerator.Noise noiseComputed = noiseGenerator.DequeueNoiseComputed();
-        Vector3Int noisePos = noiseComputed.GetGridPos();
+        NoiseGenerator.Noise[] noises = noiseGenerator.DequeueNoisesComputed();
 
-        NativeArray<float> densityValues = noiseComputed.GetComputeAsync();
-        MarchingCubesGenerator.MarchingCubes marchingCubes = marchingCubesGenerator.CreateMCInstance(densityValues, resolution, noisePos.x, noisePos.y, noisePos.z);
-        marchingCubes.StartComputeAsync();
-        noiseComputed.DisposeData();
+        foreach (NoiseGenerator.Noise noise in noises)
+        {
+            Vector3Int noisePos = noise.GetPos().grid;
+            NativeArray<float> densityValues = noise.GetComputeAsync();
+            MarchingCubesGenerator.MarchingCubes marchingCubes = marchingCubesGenerator.CreateMCInstance(densityValues, resolution, noisePos.x, noisePos.y, noisePos.z);
+            marchingCubes.StartComputeAsync();
+            noise.DisposeData();
+        }
     }
 
     void UpdateMeshFromMC()
     {
-        MarchingCubesGenerator.MarchingCubes marchingCubesComputed = marchingCubesGenerator.DequeueMCComputed();
+        MarchingCubesGenerator.MarchingCubes[] marchingCubesComputeds = marchingCubesGenerator.DequeueMCsComputed();
 
-        PooledGameObject pooledGameObject = pooledGameObjects.FirstOrDefault(g => g.GetPositions().grid == marchingCubesComputed.GetGridPos());
-
-        if (pooledGameObject != null)
+        foreach (MarchingCubesGenerator.MarchingCubes mc in marchingCubesComputeds)
         {
-            Chunk chunk;
-            chunks.TryGetValue(pooledGameObject.GetPositions(), out chunk);
+            Chunk chunk = chunks[mc.GetPos()];
+            Mesh mesh = mc.GetComputeAsync();
+            mc.DisposeData();
 
-            Mesh mesh = marchingCubesComputed.GetComputeAsync();
-            marchingCubesComputed.DisposeData();
-
-            chunk.SetPos(pooledGameObject.GetPositions());
-            chunk.SetCurrentMesh(mesh);
+            chunk.SetPos(mc.GetPos());
+            chunk.SetCachedMesh(mesh);
+            PooledGameObject pooledGameObject = chunk.GetCurrentPooledGameObject();
             pooledGameObject.UpdateCurrentMesh(mesh);
         }
     }
@@ -192,8 +193,10 @@ public class MapGenerator : MonoBehaviour
 
             currChunkPos.Set(currChunkGridPos);
 
-            PooledGameObject pooledGameObject = pooledGameObjects.FirstOrDefault(g => g.GetPositions().grid == currChunkGridPos);
-            pooledGameObject?.SetUsed(false);
+            Chunk chunk = chunks[currChunkPos];
+            PooledGameObject pooledGameObject = chunk.GetCurrentPooledGameObject();
+            pooledGameObject.SetUsed(false);
+            unusedGO.Enqueue(pooledGameObject);
         }
     }
 
@@ -209,27 +212,22 @@ public class MapGenerator : MonoBehaviour
 
             currChunkPos.Set(currChunkGridPos);
 
+            PooledGameObject pooledGameObject = unusedGO.Dequeue();
 
-            PooledGameObject pooledGameObject = pooledGameObjects.FirstOrDefault(g => !g.GetState());
-
-            if (pooledGameObject != null)
-            {
-                pooledGameObject.SetUsed(true);
-                pooledGameObject.SetPositions(currChunkPos);
-                pooledGameObject.RemoveMesh();
-            }
-
+            pooledGameObject.SetUsed(true);
+            pooledGameObject.SetPositions(currChunkPos);
+            pooledGameObject.RemoveMesh();
 
             Chunk chunk;
             bool hasChunk = chunks.TryGetValue(currChunkPos, out chunk);
 
-            if (hasChunk && chunk.GetCurrentMesh())
+            if (hasChunk && chunk.HasCachedMesh())
             {
-                pooledGameObject?.UpdateCurrentMesh(chunk.GetCurrentMesh());
+                pooledGameObject.UpdateCurrentMesh(chunk.GetCachedMesh());
             }
             else
             {
-                chunk = AddChunk(currChunkPos, resolution);
+                AddChunk(pooledGameObject, currChunkPos, resolution);
             }
         }
     }
@@ -251,17 +249,19 @@ public class MapGenerator : MonoBehaviour
         }
     }
 
-    Chunk AddChunk(MapParameters.Positions _chunkPos, int _lod)
+    Chunk AddChunk(PooledGameObject _go, MapParameters.Positions _chunkPos, int _lod)
     {
         Chunk chunk = null;
 
         if (chunks.ContainsKey(_chunkPos))
-            chunks.TryGetValue(_chunkPos, out chunk);
+            chunk = chunks[_chunkPos];
         else
         {
             chunk = new Chunk();
             chunks.Add(_chunkPos, chunk);
         }
+
+        chunk.SetCurrentPooledGameObject(_go);
 
         NoiseGenerator.Noise noiseInstance = noiseGenerator.CreateNoiseInstance(_lod, _chunkPos.grid.x, _chunkPos.grid.y, _chunkPos.grid.z);
         noiseInstance.StartComputeAsync();
@@ -275,6 +275,12 @@ public class MapGenerator : MonoBehaviour
            (int)(_worldPos.x / MapParameters.GetChunkAxisSize()),
            (int)(_worldPos.y / MapParameters.GetChunkAxisSize()),
            (int)(_worldPos.z / MapParameters.GetChunkAxisSize()));
+    }
+
+    void OnApplicationQuitting()
+    {
+        noiseGenerator.ClearOldNoises();
+        marchingCubesGenerator.ClearOldMC();
     }
 }
 
