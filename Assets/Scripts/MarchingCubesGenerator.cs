@@ -1,4 +1,3 @@
-using Palmmedia.ReportGenerator.Core;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -34,8 +33,8 @@ public class MarchingCubesGenerator : MonoBehaviour
         protected override void CreateDataCompute()
         {
             triangles = new DataCompute<Triangle>();
-            trianglesCount = new DataCompute<int>();
             density = new DataCompute<float>();
+            trianglesCount = new DataCompute<int>();
         }
 
         protected override void InitBuffers()
@@ -50,13 +49,6 @@ public class MarchingCubesGenerator : MonoBehaviour
 
             //DensityValues computed from Noise
             density.computeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, allPointsPerChunk, sizeof(float));
-        }
-
-        protected override void ReleaseBuffers()
-        {
-            triangles.computeBuffer.Release();
-            trianglesCount.computeBuffer.Release();
-            density.computeBuffer.Release();
         }
 
         protected override void StartRequest()
@@ -80,7 +72,6 @@ public class MarchingCubesGenerator : MonoBehaviour
             marchingCubesShader.Dispatch(kernel, threadGroups, threadGroups, threadGroups);
 
             GraphicsBuffer.CopyCount(triangles.computeBuffer, trianglesCount.computeBuffer, 0);
-
             AsyncGPUReadback.Request(trianglesCount.computeBuffer, trianglesCount.OnReadbackData);
             AsyncGPUReadback.Request(triangles.computeBuffer, triangles.OnReadbackData);
         }
@@ -166,7 +157,14 @@ public class MarchingCubesGenerator : MonoBehaviour
     }
     public MarchingCubes[] DequeueMCsComputed()
     {
-        int limit = marchingCubesQueue.Count > concurrentComputing ? concurrentComputing : marchingCubesQueue.Count;
+        int limit = 0;
+        for (int i = 0; i < marchingCubesQueue.Count; i++)
+        {
+            if (limit > concurrentComputing || !marchingCubesQueue[i].IsComputed())
+                break;
+
+            limit++;
+        }
 
         MarchingCubes[] mcsReturn = new MarchingCubes[limit ];
         marchingCubesQueue.CopyTo(0, mcsReturn, 0, limit);

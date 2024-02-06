@@ -15,6 +15,7 @@ public abstract class BaseComputeShader<TResult>
         public void OnReadbackData(AsyncGPUReadbackRequest _request)
         {
             data = new NativeArray<TValue>(_request.GetData<TValue>(), Allocator.Persistent);
+            computeBuffer.Release();
         }
     }
 
@@ -33,7 +34,6 @@ public abstract class BaseComputeShader<TResult>
 
     protected abstract void CreateDataCompute();
     protected abstract void InitBuffers();
-    protected abstract void ReleaseBuffers();
     protected abstract void StartRequest();
     public abstract TResult GetComputeAsync();
 
@@ -44,7 +44,6 @@ public abstract class BaseComputeShader<TResult>
     {
         InitBuffers();
         StartRequest();
-        ReleaseBuffers();
     }
 
     public MapParameters.Positions GetPos()

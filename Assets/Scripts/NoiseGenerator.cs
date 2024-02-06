@@ -34,11 +34,6 @@ public class NoiseGenerator : MonoBehaviour
             density.computeBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, allPointsPerChunk, sizeof(float));
         }
 
-        protected override void ReleaseBuffers()
-        {
-            density.computeBuffer.Release();
-        }
-
         protected override void StartRequest()
         {
             ComputeShader noiseShader = generator.noiseShader;
@@ -115,7 +110,15 @@ public class NoiseGenerator : MonoBehaviour
     
     public Noise[] DequeueNoisesComputed()
     {
-        int limit = noises.Count > concurrentComputing ? concurrentComputing : noises.Count;
+        int limit = 0;
+        for (int i = 0; i < noises.Count; i++)
+        {
+            if (limit > concurrentComputing || !noises[i].IsComputed())
+                break;
+
+            limit++;
+        }
+
         Noise[] noisesReturn = new Noise[limit];
         noises.CopyTo(0, noisesReturn, 0, limit);      
         noises.RemoveRange(0,  limit);
