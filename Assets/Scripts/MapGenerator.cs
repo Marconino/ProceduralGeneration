@@ -7,8 +7,18 @@ using UnityEngine;
 [ExecuteAlways]
 public class MapGenerator : MonoBehaviour
 {
+    [Serializable]
+    public class VertexColorParameters
+    {
+        public Gradient gradient;
+        public float maxHeight;
+        public float minHeight;
+    }
+
     [SerializeField] Viewer viewer;
     [SerializeField] Material meshMaterial;
+    [SerializeField] VertexColorParameters vertexColorParameters;
+
     Dictionary<MapParameters.Positions, Chunk> chunks;
 
     PooledGameObject[] pooledGameObjects;
@@ -97,6 +107,8 @@ public class MapGenerator : MonoBehaviour
         pooledGameObjects = new PooledGameObject[nbGOPerAxis * nbGOPerAxis * nbGOPerAxis];
 
         unusedGO = new Queue<PooledGameObject>();
+
+        marchingCubesGenerator.SetVertexColorParam(vertexColorParameters);
     }
 
     void GenerateSpawn()

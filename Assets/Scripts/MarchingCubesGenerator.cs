@@ -1,3 +1,4 @@
+using Palmmedia.ReportGenerator.Core;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -66,6 +67,7 @@ public class MarchingCubesGenerator : MonoBehaviour
             marchingCubesShader.SetInt("_nbPointsPerChunk", nbPointsPerChunk);
             marchingCubesShader.SetInt("_ThreadGroups", threadGroups);
             marchingCubesShader.SetInt("_ChunkAxisSize", MapParameters.GetChunkAxisSize());
+            marchingCubesShader.SetBool("_ActiveInterpolation", generator.activeInterpolation);
             density.computeBuffer.SetData(density.data);
 
             marchingCubesShader.SetBuffer(kernel, "_DensityValues", density.computeBuffer);
@@ -91,12 +93,6 @@ public class MarchingCubesGenerator : MonoBehaviour
             Color[] vertexColors = new Color[nbTriangles * 3];
             void* ptr = triangles.data.GetUnsafePtr();
 
-            float minHeight = -8000;
-            float maxHeight = 8000;
-            Color colorLow = Color.blue;
-            Color colorMid = new Color(0.6f, 0.3f, 0.1f, 1f);
-            Color colorHigh = Color.white;
-
             for (int i = 0; i < nbTriangles; i++)
             {
                 Triangle currTriangle = UnsafeUtility.ArrayElementAsRef<Triangle>(ptr, i);
@@ -107,25 +103,9 @@ public class MarchingCubesGenerator : MonoBehaviour
                     trianglesIndex[i * 3 + j] = i * 3 + j;
 
                     float currentVertexWorld = vertices[i * 3 + j].y + pos.world.y;
-                    float normalizedHeight = (currentVertexWorld - minHeight) / (maxHeight - minHeight);
-                    // Interpoler les couleurs en fonction de la hauteur normalisée
-                    Color vertexColor;
-                    if (normalizedHeight < 0.3f)
-                    {
-                        // Interpolation entre bleu et marron pour les altitudes basses à moyennes
-                        vertexColor = colorLow;
-                    }
-                    else if (normalizedHeight < 0.7f)
-                    {
-                        // Interpolation entre marron et blanc pour les altitudes moyennes à élevées
-                        vertexColor = colorMid;
-                    }
-                    else
-                    {
-                        vertexColor = colorHigh;
-                    }
+                    float normalizedHeight = (currentVertexWorld - generator.vertexColorParam.minHeight) / (generator.vertexColorParam.maxHeight - generator.vertexColorParam.minHeight);
 
-                    vertexColors[i * 3 + j] = vertexColor;
+                    vertexColors[i * 3 + j] = generator.vertexColorParam.gradient.Evaluate(normalizedHeight);
                 }
             }
 
@@ -158,14 +138,20 @@ public class MarchingCubesGenerator : MonoBehaviour
 
     [Header("MC Parameters")]
     [SerializeField] float isoValue = 0f;
+    [SerializeField] bool activeInterpolation = false;
     List<MarchingCubes> marchingCubesQueue;
+
+    MapGenerator.VertexColorParameters vertexColorParam;
 
     MarchingCubesGenerator()
     {
         marchingCubesQueue = new List<MarchingCubes>();
     }
-
-    public MarchingCubes CreateMCInstance( in NativeArray<float> _densityValues, int _lod, int _x, int _y, int _z)
+    public void SetVertexColorParam(MapGenerator.VertexColorParameters _vertexColorParam)
+    {
+        vertexColorParam = _vertexColorParam;
+    }
+    public MarchingCubes CreateMCInstance(in NativeArray<float> _densityValues, int _lod, int _x, int _y, int _z)
     {
         MarchingCubes marchingCubes = new MarchingCubes(this, _densityValues, _lod, _x, _y, _z);
         marchingCubesQueue.Add(marchingCubes);

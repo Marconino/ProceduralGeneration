@@ -12,6 +12,7 @@ struct Triangle
 int _nbPointsPerChunk;
 int _ThreadGroups;
 float _IsoValue;
+bool _ActiveInterpolation;
 RWStructuredBuffer<float> _DensityValues;
 AppendStructuredBuffer<Triangle> _Triangles;
 int _ChunkAxisSize;
@@ -63,17 +64,22 @@ void GenerateMarchingCubes(uint thread1DID : SV_GroupIndex, uint3 groupID : SV_G
 
         Triangle currTriangle;
         
-        currTriangle.A = Interpolation(verticesOffsets[firstEdgeVertex0] + pos, currDensityValues[firstEdgeVertex0],
+        if (_ActiveInterpolation)
+        {
+            currTriangle.A = Interpolation(verticesOffsets[firstEdgeVertex0] + pos, currDensityValues[firstEdgeVertex0],
                                        verticesOffsets[firstEdgeVertex1] + pos, currDensityValues[firstEdgeVertex1]);
-        currTriangle.B = Interpolation(verticesOffsets[secondEdgeVertex0] + pos, currDensityValues[secondEdgeVertex0],
+            currTriangle.B = Interpolation(verticesOffsets[secondEdgeVertex0] + pos, currDensityValues[secondEdgeVertex0],
                                        verticesOffsets[secondEdgeVertex1] + pos, currDensityValues[secondEdgeVertex1]);
-        currTriangle.C = Interpolation(verticesOffsets[thirdEdgeVertex0] + pos, currDensityValues[thirdEdgeVertex0],
+            currTriangle.C = Interpolation(verticesOffsets[thirdEdgeVertex0] + pos, currDensityValues[thirdEdgeVertex0],
                                        verticesOffsets[thirdEdgeVertex1] + pos, currDensityValues[thirdEdgeVertex1]);
+        }
+        else
+        {
+            currTriangle.A = ((verticesOffsets[firstEdgeVertex0] + verticesOffsets[firstEdgeVertex1]) / 2) + pos;
+            currTriangle.B = ((verticesOffsets[secondEdgeVertex0] + verticesOffsets[secondEdgeVertex1]) / 2) + pos;
+            currTriangle.C = ((verticesOffsets[thirdEdgeVertex0] + verticesOffsets[thirdEdgeVertex1]) / 2) + pos;
+        }
 
-        //currTriangle.A = ((verticesOffsets[firstEdgeVertex0] + verticesOffsets[firstEdgeVertex1]) / 2) + pos;
-        //currTriangle.B = ((verticesOffsets[secondEdgeVertex0] + verticesOffsets[secondEdgeVertex1]) / 2) + pos;
-        //currTriangle.C = ((verticesOffsets[thirdEdgeVertex0] + verticesOffsets[thirdEdgeVertex1]) / 2) + pos;
-        
         //Scaling   
         currTriangle.A = (currTriangle.A / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
         currTriangle.B = (currTriangle.B / (_nbPointsPerChunk - 1)) * _ChunkAxisSize;
