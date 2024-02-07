@@ -43,7 +43,19 @@ public class MapGenerator : MonoBehaviour
 
         if (Application.isPlaying)
         {
+            if (transform.childCount > 0)
+            {
+                for (int i = 0; i < transform.childCount; i++)
+                {
+                    Destroy(transform.GetChild(i).gameObject);
+                }
+            }
             Generate();
+        }
+        else if (updateInEditor)
+        {
+            noiseGenerator = GetNoiseGenerator();
+            marchingCubesGenerator = GetMarchingCubesGenerator();
         }
     }
 
@@ -58,6 +70,8 @@ public class MapGenerator : MonoBehaviour
                     noiseGenerator.ClearOldNoises();
                     marchingCubesGenerator.ClearOldMC();
                 }
+                GetPlayerDirections();
+                Pooling();
             }
 
             if (noiseGenerator.HasAComputedNoise())
@@ -89,11 +103,17 @@ public class MapGenerator : MonoBehaviour
 
     public NoiseGenerator GetNoiseGenerator()
     {
+        if (!noiseGenerator)
+            noiseGenerator = GetComponent<NoiseGenerator>();
+
         return noiseGenerator;
     }
 
     public MarchingCubesGenerator GetMarchingCubesGenerator()
     {
+        if (!marchingCubesGenerator)
+            marchingCubesGenerator = GetComponent<MarchingCubesGenerator>();
+
         return marchingCubesGenerator;
     }
 
